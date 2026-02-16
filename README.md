@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ### visitor management system 
 
 vms
@@ -38,3 +39,7 @@ This app can use GitHub Actions for CI. The following workflows are configured:
 ### License
 
 mit
+=======
+# visitor-management-system
+he Visitor Management System (VMS) is a digital solution designed to efficiently manage, monitor, and record visitor activities within an organization. It replaces manual register-based entry systems with a secure, automated, and real-time tracking system.
+>>>>>>> 2963cf0a7eae4f035eb4cbecf08d8a646a244f4a
