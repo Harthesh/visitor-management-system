@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ### Visitor Management
 
 Visitor Management System
@@ -39,3 +40,6 @@ This app can use GitHub Actions for CI. The following workflows are configured:
 ### License
 
 mit
+=======
+# visitor-management-system
+>>>>>>> cc720823e29a62f0ac3c0d838cacc8a1367317c8
