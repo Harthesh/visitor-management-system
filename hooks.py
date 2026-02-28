@@ -1,0 +1,6 @@
+app_name = "visitormanagement"
+app_title = "Visitor Management"
+app_publisher = "Your Name"
+app_description = "Visitor Management System"
+app_email = "your@email.com"
+app_license = "MIT"
