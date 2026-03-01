@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-01 17:10:15.563084",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "visitor_name",
+  "id_proof_type",
+  "id_proof_number",
+  "reason",
+  "blocked_by",
+  "blocked_on",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "fieldname": "visitor_name",
+   "fieldtype": "Data",
+   "label": "Visitor Name "
+  },
+  {
+   "fieldname": "id_proof_type",
+   "fieldtype": "Select",
+   "label": "ID Proof Type "
+  },
+  {
+   "fieldname": "id_proof_number",
+   "fieldtype": "Data",
+   "label": "ID Proof Number "
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Text",
+   "label": " Reason "
+  },
+  {
+   "fieldname": "blocked_by",
+   "fieldtype": "Link",
+   "label": "Blocked By ",
+   "options": "User"
+  },
+  {
+   "fieldname": "blocked_on",
+   "fieldtype": "Data",
+   "label": "Blocked On "
+  },
+  {
+   "default": "0",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active "
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-01 19:47:50.024766",
+ "modified_by": "Administrator",
+ "module": "Visitor Management",
+ "name": "Visitor Blacklist",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
