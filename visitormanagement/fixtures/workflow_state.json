@@ -20,15 +20,6 @@
  {
   "docstatus": 0,
   "doctype": "Workflow State",
-  "icon": "remove",
-  "modified": "2026-02-26 09:53:04.836971",
-  "name": "Rejected",
-  "style": "Danger",
-  "workflow_state_name": "Rejected"
- },
- {
-  "docstatus": 0,
-  "doctype": "Workflow State",
   "icon": "",
   "modified": "2026-02-27 10:04:00.813497",
   "name": "Pending HR",
@@ -124,6 +115,69 @@
   "name": "Cancelled",
   "style": "",
   "workflow_state_name": "Cancelled"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:16:51.270540",
+  "name": "Pending Visitor Manager",
+  "style": "",
+  "workflow_state_name": "Pending Visitor Manager"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:23:10.487804",
+  "name": "Items Verified",
+  "style": "",
+  "workflow_state_name": "Items Verified"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:47:12.942387",
+  "name": "Pending HOD",
+  "style": "",
+  "workflow_state_name": "Pending HOD"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:47:34.431013",
+  "name": "Pending CEO",
+  "style": "",
+  "workflow_state_name": "Pending CEO"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:37:22.165647",
+  "name": "Pending Sales Manager",
+  "style": "",
+  "workflow_state_name": "Pending Sales Manager"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-01 20:43:08.407726",
+  "name": "Pending HR Manager",
+  "style": "",
+  "workflow_state_name": "Pending HR Manager"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "remove",
+  "modified": "2026-02-26 09:53:04.836971",
+  "name": "Rejected",
+  "style": "Danger",
+  "workflow_state_name": "Rejected"
  },
  {
   "docstatus": 0,
