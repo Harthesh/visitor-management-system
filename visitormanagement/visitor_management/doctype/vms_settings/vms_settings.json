@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-01 16:58:17.234917",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "admin_email",
+  "food_dept_email",
+  "default_checkout_time",
+  "require_visitor_photo",
+  "qr_scan_required_at_gate",
+  "blacklist_action",
+  "max_visit_duration_hrs",
+  "gate_list",
+  "require_item_declaration",
+  "block_check_in_without_verification"
+ ],
+ "fields": [
+  {
+   "fieldname": "admin_email",
+   "fieldtype": "Data",
+   "label": "Admin Email "
+  },
+  {
+   "fieldname": "food_dept_email",
+   "fieldtype": "Data",
+   "label": "Food Dept Email "
+  },
+  {
+   "fieldname": "default_checkout_time",
+   "fieldtype": "Time",
+   "label": "Default Checkout Time "
+  },
+  {
+   "default": "0",
+   "fieldname": "require_visitor_photo",
+   "fieldtype": "Check",
+   "label": "Require Visitor Photo "
+  },
+  {
+   "default": "0",
+   "fieldname": "qr_scan_required_at_gate",
+   "fieldtype": "Check",
+   "label": "QR Scan Required at Gate "
+  },
+  {
+   "fieldname": "blacklist_action",
+   "fieldtype": "Select",
+   "label": "Blacklist Action ",
+   "options": "Block Entry\nAlert Only\nLog Only"
+  },
+  {
+   "fieldname": "max_visit_duration_hrs",
+   "fieldtype": "Int",
+   "label": "Max Visit Duration (hrs) "
+  },
+  {
+   "fieldname": "gate_list",
+   "fieldtype": "Small Text",
+   "label": "Gate List "
+  },
+  {
+   "default": "0",
+   "fieldname": "require_item_declaration",
+   "fieldtype": "Check",
+   "label": "Require Item Declaration "
+  },
+  {
+   "default": "0",
+   "fieldname": "block_check_in_without_verification",
+   "fieldtype": "Check",
+   "label": "Block Check In Without Verification "
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-01 17:09:38.413085",
+ "modified_by": "Administrator",
+ "module": "Visitor Management",
+ "name": "VMS Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
