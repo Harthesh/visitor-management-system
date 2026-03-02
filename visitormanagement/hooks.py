@@ -250,17 +250,18 @@ app_license = "mit"
 fixtures = [
     {
         "doctype": "Workflow",
-        "filters": [["name", "in", [
-            "CRITICAL RISK RISK",
-            "HIGH RISK RISK",
-            "MEDIUM RISK RISK",
-            "LOW RISK RISK"
-        ]]]
+        "filters": [
+            ["name", "in", ["VIP FLOW", "CANDIDATE FLOW", "CUSTOMER FLOW", "VMS Contractor Approval"]]
+        ]
     },
+    "Workflow State",
+    "Workflow Action",
     {
-        "doctype": "Workflow State"
+        "doctype": "Dashboard",
+        "filters": [
+            ["name", "=", "VMS Security Dashboard"]
+        ]
     },
-    {
-        "doctype": "Workflow Transition"
-    }
+    "Dashboard Chart",
+    "Number Card"
 ]

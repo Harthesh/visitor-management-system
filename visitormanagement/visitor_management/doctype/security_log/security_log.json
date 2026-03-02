@@ -5,6 +5,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "qr_code_value",
   "visitor_pass",
   "badge_number",
   "visitor_name",
@@ -133,12 +134,17 @@
   {
    "fieldname": "section_break_uefr",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "qr_code_value",
+   "fieldtype": "Button",
+   "label": "QR Code Value"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-02-28 18:13:32.751987",
+ "modified": "2026-03-02 09:45:01.134870",
  "modified_by": "Administrator",
  "module": "Visitor Management",
  "name": "Security Log",
