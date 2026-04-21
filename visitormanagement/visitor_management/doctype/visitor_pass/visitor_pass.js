@@ -1,6 +1,160 @@
 // Copyright (c) 2026, Harthesh and contributors
 // For license information, please see license.txt
 
+const DEFAULT_DECLARED_ITEMS = [
+	{ item_name: "Laptop",       item_category: "Electronics", quantity: 1 },
+	{ item_name: "Mobile Phone", item_category: "Electronics", quantity: 1 },
+	{ item_name: "ID Card",      item_category: "Document / Sample / Gift / Perishable / Weapon / Other", quantity: 1 },
+	{ item_name: "Bag",          item_category: "Document / Sample / Gift / Perishable / Weapon / Other", quantity: 1 },
+	{ item_name: "Water Bottle", item_category: "Document / Sample / Gift / Perishable / Weapon / Other", quantity: 1 },
+];
+
+const ID_PROOF_RULES = {
+	Aadhaar: {
+		label: "Aadhaar",
+		minLength: 12,
+		maxLength: 12,
+		ruleText: "Enter exactly 12 digits.",
+		partialPattern: /^\d{0,12}$/,
+		finalPattern: /^\d{12}$/,
+		normalize(value) {
+			return String(value || "").replace(/[\s-]/g, "");
+		},
+	},
+	"PAN Card": {
+		label: "PAN Card",
+		minLength: 10,
+		maxLength: 10,
+		ruleText: "Enter 10 characters: 5 letters, 4 digits, 1 letter.",
+		partialPattern: /^(?:[A-Za-z]{0,5}|[A-Za-z]{5}\d{0,4}|[A-Za-z]{5}\d{4}[A-Za-z]?)$/,
+		finalPattern: /^[A-Z]{5}\d{4}[A-Z]$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	Passport: {
+		label: "Passport",
+		minLength: 6,
+		maxLength: 12,
+		ruleText: "Enter 6 to 12 alphanumeric characters.",
+		partialPattern: /^[A-Za-z0-9]{0,12}$/,
+		finalPattern: /^[A-Za-z0-9]{6,12}$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	"Driving License": {
+		label: "Driving License",
+		minLength: 10,
+		maxLength: 16,
+		ruleText: "Enter 10 to 16 characters using letters, digits, or hyphen.",
+		partialPattern: /^[A-Za-z0-9-]{0,16}$/,
+		finalPattern: /^[A-Z0-9-]{10,16}$/,
+		normalize(value) {
+			return String(value || "").replace(/\s/g, "").toUpperCase();
+		},
+	},
+};
+
+function get_id_proof_validation_state(idProofType, idProofNumber) {
+	const rule = ID_PROOF_RULES[idProofType];
+	if (!rule) {
+		return { status: "neutral", isValid: true, isComplete: false, message: "" };
+	}
+
+	const normalized = rule.normalize(idProofNumber);
+	if (!normalized) {
+		return {
+			status: "neutral",
+			isValid: true,
+			isComplete: false,
+			message: `${rule.label}: ${rule.ruleText}`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (!rule.partialPattern.test(normalized)) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: invalid character or format.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (normalized.length > rule.maxLength) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: maximum ${rule.maxLength} characters allowed.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (rule.finalPattern.test(normalized)) {
+		return {
+			status: "valid",
+			isValid: true,
+			isComplete: true,
+			message: `${rule.label}: format looks valid.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	return {
+		status: "pending",
+		isValid: true,
+		isComplete: false,
+		message: `${rule.label}: ${rule.ruleText}`,
+		maxLength: rule.maxLength,
+	};
+}
+
+function get_id_proof_feedback_html(state) {
+	if (!state.message) {
+		return "";
+	}
+
+	const colorByStatus = {
+		valid: "#15803d",
+		invalid: "#b91c1c",
+		pending: "#92400e",
+		neutral: "#475569",
+	};
+	const color = colorByStatus[state.status] || colorByStatus.neutral;
+	return `<span style="color: ${color};">${frappe.utils.escape_html(state.message)}</span>`;
+}
+
+function apply_id_proof_validation_to_desk_form(frm) {
+	const field = frm.get_field("id_proof_number");
+	if (!field) {
+		return { status: "neutral", isValid: true, isComplete: false, message: "" };
+	}
+
+	const state = get_id_proof_validation_state(frm.doc.id_proof_type, frm.doc.id_proof_number);
+	frm.set_df_property("id_proof_number", "description", get_id_proof_feedback_html(state));
+
+	const maxLength = state.maxLength || "";
+	if (field.$input) {
+		field.$input.attr("maxlength", maxLength);
+		field.$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+
+	return state;
+}
+
+function prefill_default_declared_items(frm) {
+	if (!frm.is_new() || frm.doc.amended_from) return;
+	if ((frm.doc.visitor_items || []).length) return;
+	DEFAULT_DECLARED_ITEMS.forEach((item) => {
+		const row = frm.add_child("visitor_items");
+		Object.assign(row, item);
+	});
+	frm.refresh_field("visitor_items");
+}
+
 frappe.ui.form.on("Visitor Pass", {
 	refresh(frm) {
 		ensure_customer_crm_defaults(frm);
@@ -8,6 +162,8 @@ frappe.ui.form.on("Visitor Pass", {
 		apply_visitor_pass_ui(frm);
 		add_action_buttons(frm);
 		add_hospitality_buttons(frm);
+		prefill_default_declared_items(frm);
+		apply_id_proof_validation_to_desk_form(frm);
 	},
 
 	visitor_type(frm) {
@@ -93,7 +249,15 @@ frappe.ui.form.on("Visitor Pass", {
 	},
 
 	id_proof_number(frm) {
+		const state = apply_id_proof_validation_to_desk_form(frm);
+		if (!state.isValid || !state.isComplete) {
+			return;
+		}
 		lookup_existing_visitor_match(frm, "id_proof_number");
+	},
+
+	id_proof_type(frm) {
+		apply_id_proof_validation_to_desk_form(frm);
 	},
 
 	supplier_visit_mode(frm) {
@@ -213,26 +377,7 @@ function ensure_customer_crm_defaults(frm) {
 }
 
 function apply_visitor_type_defaults(frm, force = false) {
-	const defaults = {
-		Candidate: { risk_level: "Low", approval_sla_minutes: 180 },
-		Contractor: { risk_level: "High", approval_sla_minutes: 120 },
-		Customer: { risk_level: "Low", approval_sla_minutes: 90 },
-		Supplier: { risk_level: "Medium", approval_sla_minutes: 90 },
-		VIP: { risk_level: "Medium", approval_sla_minutes: 30 },
-	};
-
-	const visitor_defaults = defaults[frm.doc.visitor_type];
-	if (!visitor_defaults) {
-		return;
-	}
-
 	const updates = {};
-	if (force || !frm.doc.risk_level) {
-		updates.risk_level = visitor_defaults.risk_level;
-	}
-	if (force || !frm.doc.approval_sla_minutes) {
-		updates.approval_sla_minutes = visitor_defaults.approval_sla_minutes;
-	}
 	if (frm.doc.visitor_type === "VIP") {
 		if (!frm.doc.priority_lane) {
 			updates.priority_lane = 1;
@@ -590,7 +735,6 @@ function show_web_submissions_dialog(frm) {
 		args: {
 			doctype: 'Visitor Pass',
 			filters: [
-				['request_channel', '=', 'Portal'],
 				['workflow_state', 'in', ['Pending System Manager', 'Pending Visitor Manager', 'Pending Sales Manager', 'Pending HR Manager', 'Pending HOD', 'Pending CEO', 'Draft']]
 			],
 			fields: ['name', 'visitor_full_name', 'visitor_type', 'mobile_number', 'email_id', 'visit_date']
@@ -664,7 +808,6 @@ window.select_submission = function(submission_name, frm_name) {
 					frm.set_value('id_proof_number', data.id_proof_number);
 					frm.set_value('id_proof_scan', data.id_proof_scan);
 					frm.set_value('visitor_photo', data.visitor_photo);
-					frm.set_value('request_channel', 'Portal');
 					frm.save();
 				}, 500);
 			}

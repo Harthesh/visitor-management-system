@@ -82,7 +82,6 @@ def run():
         vp = frappe.new_doc("Visitor Pass")
         vp.update(vdata)
         vp.entry_type = "New"
-        vp.request_channel = "Desk"
         for item in items:
             vp.append("visitor_items", item)
         vp.insert(ignore_permissions=True, ignore_mandatory=True)

@@ -22,7 +22,6 @@ CONDITIONALLY_LOCKED_FIELDS = {
 INTERNAL_HIDE_FIELDS = {
 	"entry_type",
 	"status",
-	"request_channel",
 	"visitor_invitation",
 	"workflow_state",
 	"host_department",

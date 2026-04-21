@@ -112,7 +112,6 @@ def make_vp_data(vtype, data, idx):
     base = {
         "visitor_type": vtype,
         "entry_type": "New",
-        "request_channel": "Desk",
         "visit_date": add_days(BASE_DATE, (idx % 60) + 1),  # spread 1-60 days
         "expected_checkin": f"{9 + (idx % 6):02d}:00:00",
         "expected_checkout": f"{11 + (idx % 6):02d}:00:00",

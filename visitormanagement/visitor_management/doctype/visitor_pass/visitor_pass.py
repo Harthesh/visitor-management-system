@@ -30,6 +30,14 @@ ALL_PENDING_LANES = {
     "Pending CEO",
 }
 
+DEFAULT_DECLARED_ITEMS = [
+    {"item_name": "Laptop",       "item_category": "Electronics", "quantity": 1},
+    {"item_name": "Mobile Phone", "item_category": "Electronics", "quantity": 1},
+    {"item_name": "ID Card",      "item_category": "Document / Sample / Gift / Perishable / Weapon / Other", "quantity": 1},
+    {"item_name": "Bag",          "item_category": "Document / Sample / Gift / Perishable / Weapon / Other", "quantity": 1},
+    {"item_name": "Water Bottle", "item_category": "Document / Sample / Gift / Perishable / Weapon / Other", "quantity": 1},
+]
+
 class VisitorPass(Document):
 
     # Aliases used by notification templates and external references.
@@ -42,6 +50,15 @@ class VisitorPass(Document):
     @property
     def company(self):
         return self.company__organisation
+
+    def before_insert(self):
+        self._populate_default_declared_items()
+
+    def _populate_default_declared_items(self):
+        if self.amended_from or self.visitor_items:
+            return
+        for item in DEFAULT_DECLARED_ITEMS:
+            self.append("visitor_items", item)
 
     def validate(self):
         normalize_visitor_pass(self)
@@ -114,12 +131,17 @@ class VisitorPass(Document):
                         _("PAN Card format is 5 letters + 4 digits + 1 letter (e.g., ABCDE1234F). Got: {0}").format(raw),
                         title=_("Invalid PAN"),
                     )
-            # Passport: 1 letter + 7 digits (Indian) — skip strict check, just length
             elif self.id_proof_type == "Passport":
-                if len(clean) < 6 or len(clean) > 12:
+                if not re.match(r"^[A-Z0-9]{6,12}$", clean.upper()):
                     frappe.throw(
-                        _("Passport number should be 6-12 characters. Got: {0}").format(raw),
+                        _("Passport number should be 6-12 alphanumeric characters. Got: {0}").format(raw),
                         title=_("Invalid Passport"),
+                    )
+            elif self.id_proof_type == "Driving License":
+                if not re.match(r"^[A-Z0-9\-]{10,16}$", clean.upper()):
+                    frappe.throw(
+                        _("Driving License should be 10-16 characters using letters, digits, or hyphen. Got: {0}").format(raw),
+                        title=_("Invalid Driving License"),
                     )
 
     def _validate_host_active(self):

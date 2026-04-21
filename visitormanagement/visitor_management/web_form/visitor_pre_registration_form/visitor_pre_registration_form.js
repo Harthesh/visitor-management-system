@@ -25,6 +25,52 @@ const PENDING_APPROVAL_BY_TYPE = {
 	Candidate: "Pending HR Manager",
 	VIP: "Pending HOD",
 };
+const ID_PROOF_RULES = {
+	Aadhaar: {
+		label: "Aadhaar",
+		minLength: 12,
+		maxLength: 12,
+		ruleText: "Enter exactly 12 digits.",
+		partialPattern: /^\d{0,12}$/,
+		finalPattern: /^\d{12}$/,
+		normalize(value) {
+			return String(value || "").replace(/[\s-]/g, "");
+		},
+	},
+	"PAN Card": {
+		label: "PAN Card",
+		minLength: 10,
+		maxLength: 10,
+		ruleText: "Enter 10 characters: 5 letters, 4 digits, 1 letter.",
+		partialPattern: /^(?:[A-Za-z]{0,5}|[A-Za-z]{5}\d{0,4}|[A-Za-z]{5}\d{4}[A-Za-z]?)$/,
+		finalPattern: /^[A-Z]{5}\d{4}[A-Z]$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	Passport: {
+		label: "Passport",
+		minLength: 6,
+		maxLength: 12,
+		ruleText: "Enter 6 to 12 alphanumeric characters.",
+		partialPattern: /^[A-Za-z0-9]{0,12}$/,
+		finalPattern: /^[A-Za-z0-9]{6,12}$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	"Driving License": {
+		label: "Driving License",
+		minLength: 10,
+		maxLength: 16,
+		ruleText: "Enter 10 to 16 characters using letters, digits, or hyphen.",
+		partialPattern: /^[A-Za-z0-9-]{0,16}$/,
+		finalPattern: /^[A-Z0-9-]{10,16}$/,
+		normalize(value) {
+			return String(value || "").replace(/\s/g, "").toUpperCase();
+		},
+	},
+};
 
 let invitationContextState = {
 	loaded: false,
@@ -44,6 +90,106 @@ let genericFormState = {
 
 function escapeHtml(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
+}
+
+function getIdProofValidationState(idProofType, idProofNumber) {
+	const rule = ID_PROOF_RULES[idProofType];
+	if (!rule) {
+		return { status: "neutral", isValid: true, isComplete: false, message: "" };
+	}
+
+	const normalized = rule.normalize(idProofNumber);
+	if (!normalized) {
+		return {
+			status: "neutral",
+			isValid: true,
+			isComplete: false,
+			message: `${rule.label}: ${rule.ruleText}`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (!rule.partialPattern.test(normalized)) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: invalid character or format.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (normalized.length > rule.maxLength) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: maximum ${rule.maxLength} characters allowed.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (rule.finalPattern.test(normalized)) {
+		return {
+			status: "valid",
+			isValid: true,
+			isComplete: true,
+			message: `${rule.label}: format looks valid.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	return {
+		status: "pending",
+		isValid: true,
+		isComplete: false,
+		message: `${rule.label}: ${rule.ruleText}`,
+		maxLength: rule.maxLength,
+	};
+}
+
+function renderIdProofFeedback(state) {
+	const $control = $('.frappe-control[data-fieldname="id_proof_number"]');
+	if (!$control.length) {
+		return state;
+	}
+
+	let $help = $control.find(".vm-id-proof-help");
+	if (!$help.length) {
+		$help = $('<div class="vm-id-proof-help help-box small text-muted"></div>');
+		$control.find(".control-input-wrapper").append($help);
+	}
+
+	const colorByStatus = {
+		valid: "#15803d",
+		invalid: "#b91c1c",
+		pending: "#92400e",
+		neutral: "#64748b",
+	};
+	$help.text(state.message || "").css("color", colorByStatus[state.status] || colorByStatus.neutral);
+
+	const $input = frappe.web_form?.get_input?.("id_proof_number");
+	if ($input?.length) {
+		$input.attr("maxlength", state.maxLength || "");
+		$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+
+	return state;
+}
+
+function validateIdProofField(showMessage = false) {
+	const state = getIdProofValidationState(getFieldValue("id_proof_type"), getFieldValue("id_proof_number"));
+	renderIdProofFeedback(state);
+
+	if (showMessage && state.status === "invalid") {
+		frappe.msgprint({
+			title: __("Invalid ID Proof Number"),
+			message: __(state.message),
+			indicator: "red",
+		});
+	}
+
+	return state;
 }
 
 function setFormVisibility(visible) {
@@ -390,6 +536,18 @@ function bindGenericFormHandlers() {
 			applyVisitorTypeSections(getFieldValue("visitor_type"));
 		}, 0);
 	});
+
+	const $idProofTypeInput = frappe.web_form.get_input("id_proof_type");
+	$idProofTypeInput.on("change", () => {
+		setTimeout(() => {
+			validateIdProofField(false);
+		}, 0);
+	});
+
+	const $idProofNumberInput = frappe.web_form.get_input("id_proof_number");
+	$idProofNumberInput.on("input change", () => {
+		validateIdProofField(false);
+	});
 }
 
 function unlockDirectAccessFields() {
@@ -417,6 +575,7 @@ function enableDirectAccessMode() {
 	startHospitalityWatcher();
 	renderVisitorItems();
 	applyVisitorTypeSections(getFieldValue("visitor_type"));
+	validateIdProofField(false);
 	setFormVisibility(true);
 	setSubmitDisabled(false);
 }
@@ -680,6 +839,11 @@ function setupInvitationHooks() {
 			return false;
 		}
 
+		const idProofState = validateIdProofField(true);
+		if (!idProofState.isValid) {
+			return false;
+		}
+
 		return true;
 	};
 
@@ -716,7 +880,6 @@ function setupInvitationHooks() {
 		this.doc.web_form_name = this.name;
 		this.doc.invitation_token = getInvitationToken();
 		this.doc.entry_type = "New";
-		this.doc.request_channel = "Portal";
 		this.doc.submission_action = "submit";
 		const targetState = getPortalSubmissionState(this.doc.visitor_type, this.doc.submission_action);
 		this.doc.status = targetState;

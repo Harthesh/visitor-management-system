@@ -2,22 +2,6 @@ import frappe
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, nowdate
 
 
-DEFAULT_RISK_BY_TYPE = {
-	"Candidate": "Low",
-	"Contractor": "High",
-	"Customer": "Low",
-	"Supplier": "Medium",
-	"VIP": "Medium",
-}
-
-DEFAULT_SLA_BY_TYPE = {
-	"Candidate": 180,
-	"Contractor": 120,
-	"Customer": 90,
-	"Supplier": 90,
-	"VIP": 30,
-}
-
 COMPLIANCE_OK_STATUSES = {"Completed", "Served", "Closed", "Cancelled"}
 HEALTH_SCREENING_OK_STATUSES = {"Cleared"}
 HEALTH_REVIEW_TEMPERATURE = 37.5
@@ -61,21 +45,8 @@ def normalize_visitor_pass(doc):
 	if not doc.status:
 		doc.status = "Draft"
 
-	if not doc.request_channel:
-		doc.request_channel = "Desk"
-
 	# Line 1 (title in Link dropdown) — just the visitor name.
 	doc.visitor_summary = doc.visitor_full_name or "Unnamed"
-
-	expected_risk_level = infer_risk_level(doc)
-	if (
-		not doc.risk_level
-		or (doc.is_new() and doc.risk_level == "Low" and expected_risk_level != "Low")
-	):
-		doc.risk_level = expected_risk_level
-
-	if not doc.approval_sla_minutes:
-		doc.approval_sla_minutes = DEFAULT_SLA_BY_TYPE.get(doc.visitor_type, 120)
 
 	if doc.visitor_type == "Supplier" and not doc.supplier_visit_mode:
 		doc.supplier_visit_mode = "Delivery"
@@ -88,18 +59,7 @@ def normalize_visitor_pass(doc):
 	if doc.status != "Checked-In" and getattr(doc, "current_location", None):
 		doc.current_location = None
 
-	preserve_hospitality_choices = bool(
-		getattr(doc, "request_channel", None) == "Portal"
-		and not doc.is_new()
-	)
-	apply_hospitality_meal_plan(doc, preserve_existing=preserve_hospitality_choices)
-
-
-def infer_risk_level(doc):
-	if doc.visitor_type == "Supplier" and getattr(doc, "supplier_visit_mode", None) == "Delivery":
-		return "Medium"
-
-	return DEFAULT_RISK_BY_TYPE.get(doc.visitor_type, "Medium")
+	apply_hospitality_meal_plan(doc, preserve_existing=not doc.is_new())
 
 
 def should_mark_no_show(doc):

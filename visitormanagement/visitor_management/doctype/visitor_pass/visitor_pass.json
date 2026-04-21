@@ -14,9 +14,6 @@
   "column_break_request_snapshot",
   "status",
   "workflow_state",
-  "request_channel",
-  "risk_level",
-  "approval_sla_minutes",
   "visitor_invitation",
   "section_break_identity_details",
   "visitor_full_name",
@@ -52,8 +49,6 @@
   "meeting_minutes",
   "section_break_contractor",
   "contractor_link",
-  "work_order_ref",
-  "safety_induction_done",
   "contractor_nda_signed",
   "contractor_nda_document",
   "ppe_provided",
@@ -191,24 +186,6 @@
    "label": "Workflow State",
    "options": "Workflow State",
    "read_only": 1
-  },
-  {
-   "default": "Desk",
-   "fieldname": "request_channel",
-   "fieldtype": "Select",
-   "label": "Request Channel",
-   "options": "Desk\nPortal\nPhone\nEmail"
-  },
-  {
-   "fieldname": "risk_level",
-   "fieldtype": "Select",
-   "label": "Risk Level",
-   "options": "Low\nMedium\nHigh\nCritical"
-  },
-  {
-   "fieldname": "approval_sla_minutes",
-   "fieldtype": "Int",
-   "label": "Approval SLA (Minutes)"
   },
   {
    "fieldname": "visitor_invitation",
@@ -430,20 +407,6 @@
    "options": "Supplier"
   },
   {
-   "depends_on": "eval:doc.visitor_type == 'Contractor' && doc.entry_type == 'New'",
-   "fieldname": "work_order_ref",
-   "fieldtype": "Link",
-   "label": "Work Order Ref",
-   "options": "Maintenance Visit"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.visitor_type == 'Contractor'",
-   "fieldname": "safety_induction_done",
-   "fieldtype": "Check",
-   "label": "Safety Induction Done"
-  },
-  {
    "default": "0",
    "depends_on": "eval:doc.visitor_type == 'Contractor'",
    "fieldname": "contractor_nda_signed",
@@ -550,7 +513,7 @@
    "fieldname": "supplier_visit_mode",
    "fieldtype": "Select",
    "label": "Supplier Visit Mode",
-   "options": "\nMeeting\nAudit\nService"
+   "options": "\nDelivery\nMeeting\nAudit\nService"
   },
   {
    "depends_on": "eval:doc.visitor_type == 'Supplier' && doc.supplier_visit_mode != 'Delivery'",
@@ -665,40 +628,47 @@
   {
    "fieldname": "section_break_gqft",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "Badge & Approval"
   },
   {
    "fieldname": "badge_number",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Badge Number",
    "read_only": 1
   },
   {
    "fieldname": "badge_colour",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Badge Colour",
    "options": "Orange\nPurple\nGreen\nTeal\nGold"
   },
   {
    "fieldname": "approval_date",
    "fieldtype": "Datetime",
+   "hidden": 1,
    "label": "Approval Date",
    "read_only": 1
   },
   {
    "fieldname": "approved_by",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Approved By",
    "options": "User",
    "read_only": 1
   },
   {
    "fieldname": "column_break_badge",
-   "fieldtype": "Column Break"
+   "fieldtype": "Column Break",
+   "hidden": 1
   },
   {
    "fieldname": "qr_code_image",
    "fieldtype": "Attach Image",
+   "hidden": 1,
    "label": "QR Code Image",
    "read_only": 1
   },
@@ -706,6 +676,7 @@
    "allow_on_submit": 1,
    "fieldname": "gate_verified_photo",
    "fieldtype": "Attach Image",
+   "hidden": 1,
    "label": "Gate Verified Photo",
    "read_only": 1
   },
@@ -713,6 +684,7 @@
    "allow_on_submit": 1,
    "fieldname": "gate_verified_on",
    "fieldtype": "Datetime",
+   "hidden": 1,
    "label": "Gate Verified On",
    "read_only": 1
   },
@@ -720,6 +692,7 @@
    "allow_on_submit": 1,
    "fieldname": "gate_verified_by",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Gate Verified By",
    "options": "Employee",
    "read_only": 1
@@ -728,6 +701,7 @@
    "allow_on_submit": 1,
    "fieldname": "actual_checkin",
    "fieldtype": "Datetime",
+   "hidden": 1,
    "label": "Actual Check-In",
    "read_only": 1
   },
@@ -735,6 +709,7 @@
    "allow_on_submit": 1,
    "fieldname": "actual_checkout",
    "fieldtype": "Datetime",
+   "hidden": 1,
    "label": "Actual Check-Out",
    "read_only": 1
   },
@@ -743,6 +718,7 @@
    "default": "0",
    "fieldname": "no_show",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "No Show",
    "read_only": 1
   },
@@ -750,6 +726,7 @@
    "allow_on_submit": 1,
    "fieldname": "current_location",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Current Location",
    "read_only": 1
   },
@@ -757,6 +734,7 @@
    "allow_on_submit": 1,
    "fieldname": "last_health_screening",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Last Health Screening",
    "options": "Health Screening",
    "read_only": 1
@@ -765,6 +743,7 @@
    "allow_on_submit": 1,
    "fieldname": "health_screening_status",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Health Screening Status",
    "options": "Pending\nCleared\nNeeds Review\nDenied Entry",
    "read_only": 1
@@ -780,6 +759,7 @@
    "default": "Pending",
    "fieldname": "item_verification_status",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Item Verification Status",
    "options": "Pending\nPartial\nAll Verified",
    "read_only": 1
@@ -788,6 +768,7 @@
    "default": "0",
    "fieldname": "items_verified",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Items Verified",
    "read_only": 1
   },
@@ -795,6 +776,7 @@
    "default": "0",
    "fieldname": "all_items_verified",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "All Items Verified",
    "read_only": 1
   },
@@ -988,7 +970,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-15 11:35:42.440403",
+ "modified": "2026-04-21 10:47:39.730898",
  "modified_by": "Administrator",
  "module": "Visitor Management",
  "name": "Visitor Pass",
