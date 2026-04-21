@@ -3,7 +3,7 @@
 
 async function render_visitor_headline(frm) {
 	if (!frm.doc.visitor_pass) {
-		frm.dashboard.clear_headline();
+		frm.layout.show_message();
 		return;
 	}
 	try {
@@ -15,7 +15,7 @@ async function render_visitor_headline(frm) {
 			"Supplier": "#2980b9",
 			"Candidate": "#8e44ad",
 		}[vp.visitor_type] || "#34495e";
-		frm.dashboard.set_headline(
+		const html =
 			`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:13px;">`
 			+ `<b style="font-size:14px;">${frappe.utils.escape_html(vp.visitor_full_name || "-")}</b>`
 			+ `<span style="background:${type_color};color:#fff;padding:2px 10px;border-radius:10px;font-weight:600;">`
@@ -24,10 +24,10 @@ async function render_visitor_headline(frm) {
 			+ `<span>🏢 ${frappe.utils.escape_html(vp.company__organisation || "-")}</span>`
 			+ `<span>👤 Host: ${frappe.utils.escape_html(vp.person_to_visit || "-")}</span>`
 			+ `<span>📅 ${frappe.utils.escape_html(vp.visit_date || "-")}</span>`
-			+ `</div>`
-		);
+			+ `</div>`;
+		frm.layout.show_message(html, "blue", true);
 	} catch (e) {
-		frm.dashboard.clear_headline();
+		frm.layout.show_message();
 	}
 }
 

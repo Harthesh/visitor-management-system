@@ -232,7 +232,6 @@ def _build_visitor_pass_values(data, person_to_visit, id_proof_url, visitor_phot
 		"visitor_photo": visitor_photo_url,
 		"status": target_state,
 		"workflow_state": target_state,
-		"request_channel": "Portal",
 		"visitor_invitation": invitation.name if invitation else None,
 	}
 

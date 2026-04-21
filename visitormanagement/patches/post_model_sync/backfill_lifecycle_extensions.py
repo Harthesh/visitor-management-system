@@ -13,9 +13,6 @@ def execute():
 		normalize_visitor_pass(doc)
 
 		updates = {
-			"request_channel": doc.request_channel,
-			"risk_level": doc.risk_level,
-			"approval_sla_minutes": doc.approval_sla_minutes,
 			"no_show": doc.no_show,
 		}
 		if doc.visitor_type == "Supplier":

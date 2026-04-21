@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Harthesh and Contributors
 # See license.txt
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -14,6 +16,15 @@ from visitormanagement.visitor_management.doctype.visitor_pass.visitor_pass impo
 
 
 class TestVisitorPass(FrappeTestCase):
+	def test_supplier_visit_mode_includes_delivery_option(self):
+		doctype_json_path = Path(__file__).with_name("visitor_pass.json")
+		doctype_meta = json.loads(doctype_json_path.read_text())
+		supplier_visit_mode_field = next(
+			field for field in doctype_meta["fields"] if field.get("fieldname") == "supplier_visit_mode"
+		)
+
+		self.assertIn("Delivery", supplier_visit_mode_field["options"].splitlines())
+
 	def test_get_customer_visit_details_from_lead(self):
 		lead_row = frappe._dict(
 			lead_name="Ravi Kumar",

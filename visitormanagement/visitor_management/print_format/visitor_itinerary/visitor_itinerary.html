@@ -1,4 +1,5 @@
 {%- set vp = frappe.get_doc("Visitor Pass", doc.visitor_pass) if doc.visitor_pass else None -%}
+{%- set type_colors = {"Contractor": "#e53e3e", "VIP": "#805ad5", "Customer": "#2b6cb0", "Supplier": "#c05621", "Candidate": "#2f855a"} -%}
 <div style="font-family: Arial, sans-serif; color: #1f2933; font-size: 12px; line-height: 1.5;">
 	<div style="border-bottom: 3px solid #102a43; padding-bottom: 10px; margin-bottom: 15px;">
 		<h2 style="margin: 0; color: #102a43;">Visitor Itinerary</h2>
@@ -6,6 +7,15 @@
 	</div>
 
 	{% if vp %}
+	<div style="background: #1a202c; color: #fff; padding: 10px 16px; border-radius: 6px; margin-bottom: 18px; font-size: 13px;">
+		<span style="font-weight: 700; font-size: 14px;">{{ vp.visitor_full_name or '-' }}</span>
+		&nbsp;&nbsp;<span style="background: {{ type_colors.get(vp.visitor_type, '#4a5568') }}; color: #fff; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;">{{ vp.visitor_type or '-' }}</span>
+		&nbsp;&nbsp;&#128222; {{ vp.mobile_number or '-' }}
+		&nbsp;&nbsp;&#127970; {{ vp.company__organisation or '-' }}
+		&nbsp;&nbsp;&#128100; Host: {{ vp.person_to_visit or '-' }}
+		&nbsp;&nbsp;&#128197; {{ vp.visit_date or '-' }}
+	</div>
+
 	<table style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
 		<tr>
 			<td style="padding: 6px 10px; border: 1px solid #d9e2ec; background: #f0f4f8; width: 25%;"><strong>Visitor</strong></td>

@@ -75,7 +75,6 @@ def make_vp(**overrides):
         "expected_checkin": "10:00:00",
         "expected_checkout": "12:00:00",
         "entry_type": "New",
-        "request_channel": "Desk",
     }
     base.update(overrides)
     return base

@@ -86,7 +86,6 @@ def get_web_form_context(token):
 
 	values = {
 		"entry_type": "New",
-		"request_channel": "Portal",
 		"visitor_invitation": invitation.name,
 		"visitor_type": invitation.visitor_type,
 		"email_id": invitation.visitor_email,
