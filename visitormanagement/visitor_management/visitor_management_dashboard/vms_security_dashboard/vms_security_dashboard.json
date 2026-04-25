@@ -1,0 +1,65 @@
+{
+ "cards": [
+  {
+   "card": "Total Visitor Passes"
+  },
+  {
+   "card": "Pending Visitor Approvals"
+  },
+  {
+   "card": "Checked-In Visitors"
+  },
+  {
+   "card": "Security Alerts"
+  },
+  {
+   "card": "Today's Visitors"
+  },
+  {
+   "card": "No-Show Passes"
+  },
+  {
+   "card": "Compliance Misses"
+  },
+  {
+   "card": "Health Screening Exceptions"
+  },
+  {
+   "card": "Active Emergency Events"
+  }
+ ],
+ "charts": [
+  {
+   "chart": "Visitor Pass Trend",
+   "width": "Full"
+  },
+  {
+   "chart": "Visitors by Type",
+   "width": "Half"
+  },
+  {
+   "chart": "Security Events by Gate",
+   "width": "Half"
+  },
+  {
+   "chart": "Compliance Status Breakdown",
+   "width": "Half"
+  },
+  {
+   "chart": "Health Screening Status Breakdown",
+   "width": "Half"
+  }
+ ],
+ "creation": "2026-04-04 12:00:00.000000",
+ "dashboard_name": "VMS Security Dashboard",
+ "docstatus": 0,
+ "doctype": "Dashboard",
+ "idx": 0,
+ "is_default": 0,
+ "is_standard": 1,
+ "modified": "2026-04-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Visitor Management",
+ "name": "VMS Security Dashboard",
+ "owner": "Administrator"
+}

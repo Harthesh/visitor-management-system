@@ -1,0 +1,1007 @@
+const ALWAYS_LOCKED_FIELDS = [
+	"visitor_type",
+	"email_id",
+	"visit_date",
+	"expected_checkin",
+	"expected_checkout",
+	"person_to_visit",
+];
+const CONDITIONALLY_LOCKED_FIELDS = [
+	"purpose_of_visit",
+];
+let LOCKED_FIELDS = [...ALWAYS_LOCKED_FIELDS];
+
+const TYPE_SECTION_LABELS = {
+	Contractor: "Contractor Details",
+	Supplier: "Supplier Details",
+	Customer: "Customer Details",
+	Candidate: "Candidate Details",
+	VIP: "VIP Details",
+};
+const PENDING_APPROVAL_BY_TYPE = {
+	Contractor: "Pending System Manager",
+	Supplier: "Pending System Manager",
+	Customer: "Pending Sales Manager",
+	Candidate: "Pending HR Manager",
+	VIP: "Pending HOD",
+};
+const ID_PROOF_RULES = {
+	Aadhaar: {
+		label: "Aadhaar",
+		minLength: 12,
+		maxLength: 12,
+		ruleText: "Enter exactly 12 digits.",
+		partialPattern: /^\d{0,12}$/,
+		finalPattern: /^\d{12}$/,
+		normalize(value) {
+			return String(value || "").replace(/[\s-]/g, "");
+		},
+	},
+	"PAN Card": {
+		label: "PAN Card",
+		minLength: 10,
+		maxLength: 10,
+		ruleText: "Enter 10 characters: 5 letters, 4 digits, 1 letter.",
+		partialPattern: /^(?:[A-Za-z]{0,5}|[A-Za-z]{5}\d{0,4}|[A-Za-z]{5}\d{4}[A-Za-z]?)$/,
+		finalPattern: /^[A-Z]{5}\d{4}[A-Z]$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	Passport: {
+		label: "Passport",
+		minLength: 6,
+		maxLength: 12,
+		ruleText: "Enter 6 to 12 alphanumeric characters.",
+		partialPattern: /^[A-Za-z0-9]{0,12}$/,
+		finalPattern: /^[A-Za-z0-9]{6,12}$/,
+		normalize(value) {
+			return String(value || "").trim().toUpperCase();
+		},
+	},
+	"Driving License": {
+		label: "Driving License",
+		minLength: 10,
+		maxLength: 16,
+		ruleText: "Enter 10 to 16 characters using letters, digits, or hyphen.",
+		partialPattern: /^[A-Za-z0-9-]{0,16}$/,
+		finalPattern: /^[A-Z0-9-]{10,16}$/,
+		normalize(value) {
+			return String(value || "").replace(/\s/g, "").toUpperCase();
+		},
+	},
+};
+
+let invitationContextState = {
+	loaded: false,
+	valid: false,
+	invitation: null,
+	values: {},
+	afterLoadTriggered: false,
+	hooksAttached: false,
+};
+let hospitalityWatchState = {
+	started: false,
+	lastSignature: null,
+};
+let genericFormState = {
+	bound: false,
+};
+
+function escapeHtml(value) {
+	return frappe.utils.escape_html(value == null ? "" : String(value));
+}
+
+function getIdProofValidationState(idProofType, idProofNumber) {
+	const rule = ID_PROOF_RULES[idProofType];
+	if (!rule) {
+		return { status: "neutral", isValid: true, isComplete: false, message: "" };
+	}
+
+	const normalized = rule.normalize(idProofNumber);
+	if (!normalized) {
+		return {
+			status: "neutral",
+			isValid: true,
+			isComplete: false,
+			message: `${rule.label}: ${rule.ruleText}`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (!rule.partialPattern.test(normalized)) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: invalid character or format.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (normalized.length > rule.maxLength) {
+		return {
+			status: "invalid",
+			isValid: false,
+			isComplete: false,
+			message: `${rule.label}: maximum ${rule.maxLength} characters allowed.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	if (rule.finalPattern.test(normalized)) {
+		return {
+			status: "valid",
+			isValid: true,
+			isComplete: true,
+			message: `${rule.label}: format looks valid.`,
+			maxLength: rule.maxLength,
+		};
+	}
+
+	return {
+		status: "pending",
+		isValid: true,
+		isComplete: false,
+		message: `${rule.label}: ${rule.ruleText}`,
+		maxLength: rule.maxLength,
+	};
+}
+
+function renderIdProofFeedback(state) {
+	const $control = $('.frappe-control[data-fieldname="id_proof_number"]');
+	if (!$control.length) {
+		return state;
+	}
+
+	let $help = $control.find(".vm-id-proof-help");
+	if (!$help.length) {
+		$help = $('<div class="vm-id-proof-help help-box small text-muted"></div>');
+		$control.find(".control-input-wrapper").append($help);
+	}
+
+	const colorByStatus = {
+		valid: "#15803d",
+		invalid: "#b91c1c",
+		pending: "#92400e",
+		neutral: "#64748b",
+	};
+	$help.text(state.message || "").css("color", colorByStatus[state.status] || colorByStatus.neutral);
+
+	const $input = frappe.web_form?.get_input?.("id_proof_number");
+	if ($input?.length) {
+		$input.attr("maxlength", state.maxLength || "");
+		$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+
+	return state;
+}
+
+function validateIdProofField(showMessage = false) {
+	const state = getIdProofValidationState(getFieldValue("id_proof_type"), getFieldValue("id_proof_number"));
+	renderIdProofFeedback(state);
+
+	if (showMessage && state.status === "invalid") {
+		frappe.msgprint({
+			title: __("Invalid ID Proof Number"),
+			message: __(state.message),
+			indicator: "red",
+		});
+	}
+
+	return state;
+}
+
+function getMobileValidationState(raw) {
+	if (!raw) {
+		return { status: "neutral", isValid: true, message: "" };
+	}
+	const digits = String(raw).replace(/\D/g, "");
+	const isIndia = String(raw).trim().startsWith("+91") || (digits.startsWith("91") && digits.length > 10);
+	if (isIndia) {
+		const national = digits.startsWith("91") ? digits.slice(2) : digits;
+		if (national.length !== 10) {
+			return { status: "invalid", isValid: false, message: `India: need exactly 10 digits after +91. Got ${national.length}.` };
+		}
+		if (!"6789".includes(national[0])) {
+			return { status: "invalid", isValid: false, message: "India: mobile must start with 6, 7, 8, or 9." };
+		}
+		return { status: "valid", isValid: true, message: "India: format looks valid." };
+	}
+	if (digits.length < 8) {
+		return { status: "pending", isValid: true, message: `Enter 8-15 digits. Got ${digits.length}.` };
+	}
+	if (digits.length > 15) {
+		return { status: "invalid", isValid: false, message: "Number too long (max 15 digits)." };
+	}
+	return { status: "valid", isValid: true, message: "Format looks valid." };
+}
+
+function renderMobileFeedback(state) {
+	const $control = $('.frappe-control[data-fieldname="mobile_number"]');
+	if (!$control.length) return state;
+	let $help = $control.find(".vm-mobile-help");
+	if (!$help.length) {
+		$help = $('<div class="vm-mobile-help help-box small text-muted"></div>');
+		$control.find(".control-input-wrapper").append($help);
+	}
+	const colorByStatus = {
+		valid: "#15803d", invalid: "#b91c1c", pending: "#92400e", neutral: "#64748b",
+	};
+	$help.text(state.message || "").css("color", colorByStatus[state.status] || colorByStatus.neutral);
+	const $input = frappe.web_form?.get_input?.("mobile_number");
+	if ($input?.length) {
+		$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+	return state;
+}
+
+function validateMobileField(showMessage = false) {
+	const state = getMobileValidationState(getFieldValue("mobile_number"));
+	renderMobileFeedback(state);
+	if (showMessage && state.status === "invalid") {
+		frappe.msgprint({
+			title: __("Invalid Mobile Number"),
+			message: __(state.message),
+			indicator: "red",
+		});
+	}
+	return state;
+}
+
+function setFormVisibility(visible) {
+	$(".web-form .form-column, .web-form .section-body, .web-form .web-form-footer, .vm-custom-block").toggleClass(
+		"vm-form-hidden",
+		!visible
+	);
+}
+
+function applyVisitorTypeSections(visitorType) {
+	if (!visitorType) {
+		return;
+	}
+
+	const activeLabel = TYPE_SECTION_LABELS[visitorType];
+
+	$(".web-form .row.form-section").each(function () {
+		const $section = $(this);
+		const $head = $section.find(".section-head");
+		if (!$head.length) {
+			return;
+		}
+
+		const sectionLabel = $head.text().trim();
+		const isTypeSection = Object.values(TYPE_SECTION_LABELS).includes(sectionLabel);
+		if (!isTypeSection) {
+			return;
+		}
+
+		if (sectionLabel === activeLabel) {
+			$section.removeClass("vm-form-hidden").show();
+		} else {
+			$section.addClass("vm-form-hidden").hide();
+		}
+	});
+}
+
+function getVisitorItemsFromContext() {
+	const items = invitationContextState.values?.visitor_items;
+	return Array.isArray(items) ? items : [];
+}
+
+function getVisitorItemRowTemplate(item = {}) {
+	return `
+		<div class="vm-visitor-item-row vm-hospitality-card">
+			<div class="vm-locked-grid">
+				<div>
+					<label class="control-label">${__("Item Name")}</label>
+					<input type="text" class="form-control vm-item-name" value="${escapeHtml(item.item_name || "")}">
+				</div>
+				<div>
+					<label class="control-label">${__("Quantity")}</label>
+					<input type="number" min="1" step="0.01" class="form-control vm-item-quantity" value="${escapeHtml(item.quantity || 1)}">
+				</div>
+			</div>
+			<div class="mt-3">
+				<label class="control-label">${__("Description")}</label>
+				<textarea class="form-control vm-item-description">${escapeHtml(item.description || "")}</textarea>
+			</div>
+			<div class="mt-3 d-flex justify-content-end">
+				<button type="button" class="btn btn-default btn-sm vm-remove-item">${__("Remove Item")}</button>
+			</div>
+		</div>
+	`;
+}
+
+function ensureVisitorItemsSection() {
+	if ($(".vm-visitor-items-section").length) {
+		return;
+	}
+
+	const sectionHtml = `
+		<div class="vm-custom-block vm-visitor-items-section vm-locked-section">
+			<div class="vm-locked-section-title">${__("Visitor Items")}</div>
+			<div class="help-box small text-muted">
+				${__("Add all items carried by the visitor. These details will be visible for security verification.")}
+			</div>
+			<div class="vm-visitor-items-list mt-3"></div>
+			<div class="mt-3">
+				<button type="button" class="btn btn-default vm-add-item">${__("Add Item")}</button>
+			</div>
+		</div>
+	`;
+
+	$(".web-form .web-form-footer").before(sectionHtml);
+	$(".vm-visitor-items-section").on("click", ".vm-add-item", () => {
+		$(".vm-visitor-items-list").append(getVisitorItemRowTemplate());
+	});
+	$(".vm-visitor-items-section").on("click", ".vm-remove-item", function () {
+		$(this).closest(".vm-visitor-item-row").remove();
+	});
+}
+
+function renderVisitorItems(items = []) {
+	ensureVisitorItemsSection();
+	const $list = $(".vm-visitor-items-list");
+	$list.empty();
+
+	if (!items.length) {
+		$list.append(getVisitorItemRowTemplate());
+		return;
+	}
+
+	items.forEach((item) => {
+		$list.append(getVisitorItemRowTemplate(item));
+	});
+}
+
+function collectVisitorItems() {
+	return $(".vm-visitor-item-row")
+		.map(function () {
+			const $row = $(this);
+			const itemName = ($row.find(".vm-item-name").val() || "").trim();
+			if (!itemName) {
+				return null;
+			}
+
+			return {
+				item_name: itemName,
+				quantity: $row.find(".vm-item-quantity").val() || 1,
+				description: ($row.find(".vm-item-description").val() || "").trim(),
+			};
+		})
+		.get()
+		.filter(Boolean);
+}
+
+function getFieldValue(fieldname) {
+	if (!frappe.web_form) {
+		return null;
+	}
+
+	if (LOCKED_FIELDS.includes(fieldname)) {
+		const lockedDocValue = frappe.web_form.doc?.[fieldname];
+		if (lockedDocValue !== undefined && lockedDocValue !== null && lockedDocValue !== "") {
+			return lockedDocValue;
+		}
+
+		const lockedInvitationValue = invitationContextState.values?.[fieldname];
+		if (
+			lockedInvitationValue !== undefined &&
+			lockedInvitationValue !== null &&
+			lockedInvitationValue !== ""
+		) {
+			return lockedInvitationValue;
+		}
+
+		const lockedBootValue = window.vmInvitationValues?.[fieldname];
+		return lockedBootValue !== undefined ? lockedBootValue : null;
+	}
+
+	const fieldValue = frappe.web_form.fields_dict?.[fieldname]
+		? frappe.web_form.get_value(fieldname)
+		: undefined;
+	if (fieldValue !== undefined && fieldValue !== null && fieldValue !== "") {
+		return fieldValue;
+	}
+
+	const docValue = frappe.web_form.doc?.[fieldname];
+	if (docValue !== undefined && docValue !== null && docValue !== "") {
+		return docValue;
+	}
+
+	const invitationValue = invitationContextState.values?.[fieldname];
+	if (invitationValue !== undefined && invitationValue !== null && invitationValue !== "") {
+		return invitationValue;
+	}
+
+	const bootValue = window.vmInvitationValues?.[fieldname];
+	return bootValue !== undefined ? bootValue : null;
+}
+
+function setFieldInputDirectly(field, value) {
+	field.value = value;
+	if (field.$input) {
+		field.$input.val(value == null ? "" : value);
+	} else if (field.input) {
+		$(field.input).val(value == null ? "" : value);
+	}
+	field.set_disp_area?.(value);
+}
+
+async function setFieldValue(fieldname, value) {
+	const field = frappe.web_form?.fields_dict?.[fieldname];
+	if (!field) {
+		return;
+	}
+
+	if (LOCKED_FIELDS.includes(fieldname)) {
+		setFieldInputDirectly(field, value);
+		frappe.web_form.doc[fieldname] = value;
+		field.refresh?.();
+		return;
+	}
+
+	try {
+		await frappe.web_form.set_value(fieldname, value);
+	} catch (error) {
+		// Some web form controls, especially autocomplete/link-like fields,
+		// can throw during early boot if suggestion lists are not ready yet.
+		console.warn(`Falling back to direct assignment for ${fieldname}`, error);
+		setFieldInputDirectly(field, value);
+	}
+
+	frappe.web_form.doc[fieldname] = value;
+	field.refresh?.();
+}
+
+async function syncHospitalityFieldsFromMealToggle() {
+	if (!frappe.web_form?.fields_dict?.meal_required) {
+		return;
+	}
+
+	const mealRequired = Number(getFieldValue("meal_required")) ? 1 : 0;
+	if (!mealRequired) {
+		await setFieldValue("meal_type", "");
+		await setFieldValue("assigned_meal_slots", "");
+		await setFieldValue("hospitality_type", "");
+		return;
+	}
+
+	const visit_date = getFieldValue("visit_date");
+	const expected_checkin = getFieldValue("expected_checkin");
+	const expected_checkout = getFieldValue("expected_checkout");
+
+	if (!visit_date || !expected_checkin || !expected_checkout) {
+		return;
+	}
+
+	try {
+		const { message } = await frappe.call({
+			method: "visitormanagement.visitor_management.lifecycle.get_hospitality_meal_plan",
+			args: { visit_date, expected_checkin, expected_checkout },
+		});
+
+		if (!message) {
+			return;
+		}
+
+		if (!getFieldValue("meal_type")) {
+			await setFieldValue("meal_type", message.meal_type || "");
+		}
+		await setFieldValue("assigned_meal_slots", message.assigned_meal_slots || "");
+		await setFieldValue("hospitality_type", message.hospitality_type || "");
+		if (frappe.web_form.fields_dict.service_time && !getFieldValue("service_time")) {
+			await setFieldValue("service_time", message.service_time || null);
+		}
+	} catch (error) {
+		console.error("Failed to derive hospitality meal plan", error);
+	}
+}
+
+function attachHospitalityHandlers() {
+	const mealRequiredField = frappe.web_form?.fields_dict?.meal_required;
+	if (!mealRequiredField || mealRequiredField._vmHospitalityBound) {
+		return;
+	}
+
+	mealRequiredField._vmHospitalityBound = true;
+	const $input = frappe.web_form.get_input("meal_required");
+	$input.on("change", () => {
+		setTimeout(() => {
+			syncHospitalityFieldsFromMealToggle();
+		}, 0);
+	});
+}
+
+function startHospitalityWatcher() {
+	if (hospitalityWatchState.started || !frappe.web_form) {
+		return;
+	}
+
+	hospitalityWatchState.started = true;
+	window.setInterval(() => {
+		if (!frappe.web_form?.fields_dict?.meal_required) {
+			return;
+		}
+
+		const signature = JSON.stringify({
+			meal_required: getFieldValue("meal_required"),
+			visit_date: getFieldValue("visit_date"),
+			expected_checkin: getFieldValue("expected_checkin"),
+			expected_checkout: getFieldValue("expected_checkout"),
+		});
+
+		if (signature === hospitalityWatchState.lastSignature) {
+			return;
+		}
+
+		hospitalityWatchState.lastSignature = signature;
+		syncHospitalityFieldsFromMealToggle();
+	}, 400);
+}
+
+function areInvitationFieldsReady() {
+	return Boolean(
+		frappe.web_form &&
+			frappe.web_form.fields_dict &&
+			Object.keys(frappe.web_form.fields_dict).length > 0 &&
+			document.querySelector('.frappe-control[data-fieldname="visitor_type"]') &&
+			document.querySelector(".web-form-footer")
+	);
+}
+
+function getInvitationToken() {
+	return new URLSearchParams(window.location.search).get("token");
+}
+
+function getPortalSubmissionState(visitorType, submissionAction = "submit") {
+	// Portal submissions always land as Draft. Host reviews and pushes through workflow manually.
+	return "Draft";
+}
+
+function getBootInvitationContext() {
+	if (window.vmInvitationValues === undefined) {
+		return null;
+	}
+
+	return {
+		valid: Boolean(window.vmInvitationValid),
+		invitation: window.vmInvitationName,
+		message: window.vmInvitationMessage,
+		values: window.vmInvitationValues || {},
+	};
+}
+
+function setSubmitDisabled(disabled) {
+	$(".submit-btn").prop("disabled", disabled);
+}
+
+function bindGenericFormHandlers() {
+	if (genericFormState.bound || !frappe.web_form) {
+		return;
+	}
+
+	genericFormState.bound = true;
+
+	const $visitorTypeInput = frappe.web_form.get_input("visitor_type");
+	$visitorTypeInput.on("change", () => {
+		setTimeout(() => {
+			applyVisitorTypeSections(getFieldValue("visitor_type"));
+		}, 0);
+	});
+
+	const $idProofTypeInput = frappe.web_form.get_input("id_proof_type");
+	$idProofTypeInput.on("change", () => {
+		setTimeout(() => {
+			validateIdProofField(false);
+		}, 0);
+	});
+
+	const $idProofNumberInput = frappe.web_form.get_input("id_proof_number");
+	$idProofNumberInput.on("input change", () => {
+		validateIdProofField(false);
+	});
+
+	const $mobileInput = frappe.web_form.get_input("mobile_number");
+	if ($mobileInput?.length) {
+		$mobileInput.on("input change", () => {
+			validateMobileField(false);
+		});
+	}
+}
+
+function unlockDirectAccessFields() {
+	LOCKED_FIELDS.forEach((fieldname) => {
+		const field = frappe.web_form?.fields_dict?.[fieldname];
+		if (!field) {
+			return;
+		}
+
+		frappe.web_form.set_df_property(fieldname, "read_only", 0);
+		const $input = frappe.web_form.get_input(fieldname);
+		$input.prop("readonly", false).prop("disabled", false);
+		$input.removeAttr("tabindex");
+		$(field.wrapper).removeClass("vm-locked-field vm-host-field");
+		$(field.wrapper).find(".vm-locked-display").remove();
+		$(field.wrapper).find(".control-input").show();
+		$(field.wrapper).find(".control-value").hide();
+	});
+}
+
+function enableDirectAccessMode() {
+	unlockDirectAccessFields();
+	bindGenericFormHandlers();
+	attachHospitalityHandlers();
+	startHospitalityWatcher();
+	renderVisitorItems();
+	applyVisitorTypeSections(getFieldValue("visitor_type"));
+	validateIdProofField(false);
+	setFormVisibility(true);
+	setSubmitDisabled(false);
+}
+
+function syncVisibleLockedField(fieldname, value) {
+	const $control = $(`.frappe-control[data-fieldname="${fieldname}"]`);
+	if (!$control.length) {
+		return;
+	}
+
+	const displayValue =
+		value === null || value === undefined || value === ""
+			? "-"
+			: typeof value === "boolean"
+				? value
+					? __("Yes")
+					: __("No")
+				: String(value);
+	const $wrapper = $control.find(".control-input-wrapper");
+	$control.find(".control-input").hide();
+	let $display = $wrapper.find(".vm-locked-display");
+	if (!$display.length) {
+		$display = $('<div class="vm-locked-display like-disabled-input"></div>');
+		$wrapper.append($display);
+	}
+	$display.text(displayValue).show();
+	$control.find(".control-value").text(displayValue).show();
+	$control.addClass("vm-host-field");
+}
+
+function renderLockedFieldValues(values = {}) {
+	LOCKED_FIELDS.forEach((fieldname) => {
+		if (!(fieldname in values)) {
+			return;
+		}
+
+		syncVisibleLockedField(fieldname, values[fieldname]);
+	});
+}
+
+async function applyInvitationValues(values) {
+	for (const [fieldname, value] of Object.entries(values || {})) {
+		const field = frappe.web_form.fields_dict[fieldname];
+		if (!field) {
+			continue;
+		}
+
+		await setFieldValue(fieldname, value);
+		if (LOCKED_FIELDS.includes(fieldname)) {
+			syncVisibleLockedField(fieldname, value);
+		}
+	}
+}
+
+async function applyInvitationValuesWithRetry(values) {
+	await applyInvitationValues(values);
+
+	// Web Form fields can finish wiring their inputs slightly after after_load.
+	// Re-applying once keeps the locked invitation values visible on first open.
+	setTimeout(() => {
+		applyInvitationValues(values);
+	}, 150);
+	setTimeout(() => {
+		LOCKED_FIELDS.forEach((fieldname) => syncVisibleLockedField(fieldname, values?.[fieldname]));
+		applyVisitorTypeSections(values?.visitor_type);
+	}, 300);
+}
+
+function ensureInvitationBinding() {
+	const invitationName =
+		invitationContextState.invitation || invitationContextState.values.visitor_invitation;
+	if (!invitationName) {
+		return false;
+	}
+
+	frappe.web_form.doc.visitor_invitation = invitationName;
+	if (frappe.web_form.fields_dict.visitor_invitation) {
+		frappe.web_form.fields_dict.visitor_invitation.value = invitationName;
+		frappe.web_form.fields_dict.visitor_invitation.set_input?.(invitationName);
+	}
+
+	return true;
+}
+
+function getInvitationBackedValue(fieldname) {
+	return (
+		invitationContextState.values?.[fieldname] ??
+		window.vmInvitationValues?.[fieldname]
+	);
+}
+
+function isMissingRequiredValue(value, field) {
+	if (value === null || value === undefined) {
+		return true;
+	}
+
+	if (field?.df?.fieldtype === "Text Editor") {
+		return !String(value).replace(/<[^>]*>/g, "").trim();
+	}
+
+	if (typeof value === "string") {
+		return !value.trim();
+	}
+
+	return false;
+}
+
+function validateRequiredFieldsForSave(docValues) {
+	const missingLabels = [];
+
+	Object.values(frappe.web_form.fields_dict || {}).forEach((field) => {
+		if (!field?.df?.reqd) {
+			return;
+		}
+
+		const fieldname = field.df.fieldname;
+		const value = docValues[fieldname];
+		if (!isMissingRequiredValue(value, field)) {
+			return;
+		}
+
+		missingLabels.push(__(field.df.label));
+	});
+
+	if (!missingLabels.length) {
+		return true;
+	}
+
+	frappe.msgprint({
+		title: __("Missing Values Required"),
+		message:
+			__("Following fields have missing values:") +
+			"<br><br><ul><li>" +
+			missingLabels.join("<li>") +
+			"</ul>",
+		indicator: "orange",
+	});
+	return false;
+}
+
+function lockInvitationFields() {
+	LOCKED_FIELDS.forEach((fieldname) => {
+		const field = frappe.web_form.fields_dict[fieldname];
+		if (!field) {
+			return;
+		}
+
+		// Locked invitation fields are source-of-truth values from the host.
+		// Skip client-side option/link validation that may run before controls finish booting.
+		field.df.ignore_validation = 1;
+		field.df.ignore_link_validation = 1;
+		frappe.web_form.set_df_property(fieldname, "reqd", 0);
+		frappe.web_form.set_df_property(fieldname, "read_only", 1);
+		const $input = frappe.web_form.get_input(fieldname);
+		$input.prop("readonly", true).prop("disabled", true);
+		$input.attr("tabindex", "-1");
+		$(field.wrapper).addClass("vm-locked-field vm-host-field");
+		syncVisibleLockedField(fieldname, frappe.web_form.doc[fieldname]);
+	});
+}
+
+async function handleInvitationAfterLoad() {
+	if (invitationContextState.afterLoadTriggered) {
+		return;
+	}
+
+	if (!areInvitationFieldsReady()) {
+		setTimeout(() => handleInvitationAfterLoad(), 100);
+		return;
+	}
+
+	invitationContextState.afterLoadTriggered = true;
+
+	const token = getInvitationToken();
+	invitationContextState = {
+		...invitationContextState,
+		loaded: false,
+		valid: false,
+		invitation: null,
+		values: {},
+	};
+
+	frappe.web_form.set_df_property("visitor_invitation", "hidden", 1);
+	$(".discard-btn").hide();
+	setSubmitDisabled(true);
+	setFormVisibility(false);
+	renderLockedFieldValues(window.vmInvitationValues || {});
+
+	if (!token) {
+		enableDirectAccessMode();
+		return;
+	}
+
+	try {
+		let context = getBootInvitationContext();
+		if (!context) {
+			const response = await frappe.call({
+				method: "visitormanagement.visitor_management.doctype.visitor_invitation.visitor_invitation.get_web_form_context",
+				args: { token },
+			});
+			context = response.message || {};
+		}
+
+		if (!context.valid) {
+			setFormVisibility(true);
+			setSubmitDisabled(true);
+			return;
+		}
+
+		invitationContextState = {
+			...invitationContextState,
+			loaded: true,
+			valid: true,
+			invitation: context.invitation,
+			values: context.values || {},
+		};
+		// Lock conditional fields only if host filled them
+		LOCKED_FIELDS = [...ALWAYS_LOCKED_FIELDS];
+		for (const fieldname of CONDITIONALLY_LOCKED_FIELDS) {
+			const val = context.values?.[fieldname];
+			if (val && String(val).trim()) {
+				LOCKED_FIELDS.push(fieldname);
+			}
+		}
+
+		renderLockedFieldValues(context.values || {});
+		await applyInvitationValuesWithRetry(context.values || {});
+		ensureInvitationBinding();
+		lockInvitationFields();
+		applyVisitorTypeSections(context.values?.visitor_type);
+		attachHospitalityHandlers();
+		startHospitalityWatcher();
+		await syncHospitalityFieldsFromMealToggle();
+		renderVisitorItems(getVisitorItemsFromContext());
+		setFormVisibility(true);
+		setSubmitDisabled(false);
+	} catch (error) {
+		console.error("Failed to load invitation context", error);
+		setFormVisibility(true);
+		setSubmitDisabled(false);
+	}
+}
+
+function setupInvitationHooks() {
+	if (!frappe.web_form || invitationContextState.hooksAttached) {
+		return;
+	}
+
+	invitationContextState.hooksAttached = true;
+	frappe.web_form.after_load = handleInvitationAfterLoad;
+
+	frappe.web_form.validate = () => {
+		const token = getInvitationToken();
+		if (token && (!invitationContextState.loaded || !invitationContextState.valid)) {
+			frappe.msgprint(__("Invitation details are still loading or invalid. Reopen the invitation link and try again."));
+			return false;
+		}
+
+		if (token && !ensureInvitationBinding()) {
+			frappe.msgprint(__("A valid invitation is required to submit this form."));
+			return false;
+		}
+
+		const idProofState = validateIdProofField(true);
+		if (!idProofState.isValid) {
+			return false;
+		}
+
+		const mobileState = validateMobileField(true);
+		if (!mobileState.isValid) {
+			return false;
+		}
+
+		return true;
+	};
+
+	frappe.web_form.save = function () {
+		const valid = this.validate && this.validate();
+		if (!valid && valid !== undefined) {
+			frappe.msgprint(
+				__("Couldn't save, please check the data you have entered"),
+				__("Validation Error")
+			);
+			return false;
+		}
+
+		const docValues = this.get_values(true, true) || {};
+		if (window.saving) {
+			return false;
+		}
+
+		LOCKED_FIELDS.forEach((fieldname) => {
+			const invitationValue = getInvitationBackedValue(fieldname);
+			if (invitationValue !== undefined && invitationValue !== null && invitationValue !== "") {
+				docValues[fieldname] = invitationValue;
+			}
+		});
+
+		if (!validateRequiredFieldsForSave(docValues)) {
+			return false;
+		}
+
+		Object.assign(this.doc, docValues);
+
+		this.doc.visitor_items = collectVisitorItems();
+		this.doc.doctype = this.doc_type;
+		this.doc.web_form_name = this.name;
+		this.doc.invitation_token = getInvitationToken();
+		this.doc.entry_type = "New";
+		this.doc.submission_action = "submit";
+		const targetState = getPortalSubmissionState(this.doc.visitor_type, this.doc.submission_action);
+		this.doc.status = targetState;
+		this.doc.workflow_state = targetState;
+		this.doc.visitor_invitation =
+			this.doc.visitor_invitation ||
+			invitationContextState.invitation ||
+			invitationContextState.values.visitor_invitation;
+
+		window.saving = true;
+		frappe.form_dirty = false;
+
+		frappe.call({
+			type: "POST",
+			method: "visitormanagement.visitor_management.portal.submit_pre_registration",
+			args: {
+				payload: this.doc,
+			},
+			freeze: true,
+			callback: (response) => {
+				if (!response.exc) {
+					this.handle_success(response.message);
+					frappe.web_form.events.trigger("after_save");
+					this.after_save && this.after_save();
+				}
+			},
+			always: () => {
+				window.saving = false;
+			},
+		});
+
+		return false;
+	};
+
+	// If the form has already rendered before this script attached the hook,
+	// run the invitation loader immediately.
+	if (frappe.web_form.fields_dict && Object.keys(frappe.web_form.fields_dict).length) {
+		setTimeout(() => {
+			handleInvitationAfterLoad();
+		}, 0);
+	}
+}
+
+function bootstrapInvitationHooks(retries = 40) {
+	setupInvitationHooks();
+	startHospitalityWatcher();
+	renderLockedFieldValues(window.vmInvitationValues || {});
+
+	if (invitationContextState.hooksAttached && !invitationContextState.afterLoadTriggered) {
+		handleInvitationAfterLoad();
+	}
+
+	if ((!invitationContextState.hooksAttached || !invitationContextState.afterLoadTriggered) && retries > 0) {
+		setTimeout(() => bootstrapInvitationHooks(retries - 1), 100);
+	}
+}
+
+bootstrapInvitationHooks();
+frappe.ready(() => bootstrapInvitationHooks());

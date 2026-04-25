@@ -1,15 +1,235 @@
 # Copyright (c) 2026, Harthesh and contributors
 # For license information, please see license.txt
 
-# import frappe
-from frappe.model.document import Document
-
-
-class SecurityLog(Document):
-	pass
 import frappe
 from frappe.model.document import Document
-from frappe.utils import now_datetime
+from frappe.utils import get_datetime, getdate, now_datetime, time_diff_in_seconds
+
+import re
+
+from visitormanagement.visitor_management.lifecycle import (
+    derive_health_screening_status,
+    log_visitor_event,
+    sync_contact_trace,
+    sync_compliance_check,
+    sync_health_screening,
+)
+
+
+def mask_id_number(raw):
+    """Mask ID proof number, preserving separators and showing only last 4 characters.
+
+    Aadhaar  5001-5002-5003  →  XXXX-XXXX-5003
+    PAN      AABPR2345T     →  XXXXXX345T
+    Passport P1234567       →  XXXX4567
+    DL       DL-TN-05210099 →  XX-XX-XXXX0099
+    """
+    # Extract only alphanumeric characters and their positions
+    chars = []
+    for i, ch in enumerate(raw):
+        if ch.isalnum():
+            chars.append((i, ch))
+
+    if len(chars) <= 4:
+        return raw
+
+    # Positions of characters to keep visible (last 4 alphanumeric)
+    visible_positions = {pos for pos, _ in chars[-4:]}
+
+    # Rebuild string: mask alphanumeric chars except last 4, keep separators
+    masked = []
+    for i, ch in enumerate(raw):
+        if ch.isalnum():
+            masked.append(ch if i in visible_positions else "X")
+        else:
+            masked.append(ch)  # keep hyphens, spaces, slashes as-is
+    return "".join(masked)
+
+
+def _get_employee_email(employee_name):
+    if not employee_name:
+        return None
+
+    employee = frappe.db.get_value(
+        "Employee",
+        employee_name,
+        ["company_email", "personal_email", "user_id"],
+        as_dict=True,
+    )
+    if not employee:
+        return None
+
+    return employee.company_email or employee.personal_email or employee.user_id
+
+
+def _get_role_users(role_name):
+    """Return a list of enabled user email addresses that hold the given role."""
+    rows = frappe.get_all(
+        "Has Role",
+        filters={"role": role_name, "parenttype": "User"},
+        fields=["parent"],
+    )
+    emails = []
+    for row in rows:
+        result = frappe.db.get_value("User", row.parent, ["enabled", "email"], as_dict=True)
+        if result and result.enabled and result.email:
+            emails.append(result.email)
+    return emails
+
+
+def _get_invitation_creator_email(visitor_pass):
+    """Return the created_by_user email from the linked Visitor Invitation, or None.
+
+    Skips blank, Administrator, and Guest values — those are system users that
+    should not receive operational emails.
+    """
+    if not visitor_pass.visitor_invitation:
+        return None
+    created_by = frappe.db.get_value(
+        "Visitor Invitation", visitor_pass.visitor_invitation, "created_by_user"
+    )
+    if not created_by:
+        return None
+    if created_by in ("Administrator", "Guest"):
+        return None
+    return created_by
+
+
+def _build_event_table(visitor_pass, event_type, timestamp, gate_name=None):
+    """Build an HTML table summarising the check-in or check-out event."""
+    base_url = frappe.utils.get_url()
+    pass_url = f"{base_url}/app/visitor-pass/{visitor_pass.name}"
+    label = "Check-In Time" if event_type == "Check-In" else "Check-Out Time"
+    return (
+        "<table style='border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;'>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>Visitor</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.visitor_full_name or '-'}</td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Type</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.visitor_type or '-'}</td></tr>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>Pass ID</b></td>"
+        f"<td style='padding:6px 10px;'><a href='{pass_url}'>{visitor_pass.name}</a></td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Host</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.person_to_visit or '-'}</td></tr>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>{label}</b></td>"
+        f"<td style='padding:6px 10px;'>{timestamp or now_datetime()}</td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Gate</b></td>"
+        f"<td style='padding:6px 10px;'>{gate_name or '-'}</td></tr>"
+        "</table>"
+    )
+
+
+def _email_host(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to the host employee."""
+    try:
+        host_email = _get_employee_email(visitor_pass.person_to_visit)
+        if not host_email:
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=[host_email],
+            subject=subject,
+            message=f"<p>Hi {visitor_pass.person_to_visit or 'there'},</p>{table}",
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_host failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _email_security_head(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to all users with the Security Head role.
+
+    B19 guard: if no users hold Security Head role, this is a silent no-op.
+    Assign at least one user to the Security Head role to receive these emails.
+    """
+    try:
+        recipients = _get_role_users("Security Head")
+        if not recipients:
+            # No Security Head users assigned — silent no-op per B19 guard.
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=recipients,
+            subject=subject,
+            message=table,
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_security_head failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _email_invitation_creator(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to the invitation creator if one exists."""
+    try:
+        creator_email = _get_invitation_creator_email(visitor_pass)
+        if not creator_email:
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=[creator_email],
+            subject=subject,
+            message=(
+                f"<p>The visitor you invited has "
+                f"{'checked in' if event_type == 'Check-In' else 'checked out'}.</p>"
+                f"{table}"
+            ),
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_invitation_creator failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _notify_checkin(visitor_pass, security_log):
+    """Dispatch all check-in notification emails.
+
+    Recipients:
+      1. Host employee (person_to_visit).
+      2. All Security Head role users.
+      3. Invitation creator (if visitor_invitation is set and creator is not system user).
+
+    Each send is wrapped individually so one failure does not block the others.
+    The existing _send_host_checkin_email path (called via _notify_host_arrival)
+    was the legacy code path. This function supersedes it and is called from
+    after_insert. The VMS Host Alert Notification record is deleted by the
+    remove_legacy_duplicate_notifications patch (Item C) so there is no
+    duplicate email risk.
+    """
+    visitor_name = visitor_pass.visitor_full_name or "Unknown"
+    visitor_type = visitor_pass.visitor_type or "Visitor"
+    subject = f"Visitor Checked In: {visitor_name} ({visitor_type})"
+    timestamp = security_log.check_in_date_time or now_datetime()
+    gate = security_log.gate_name or None
+
+    _email_host(visitor_pass, "Check-In", subject, timestamp, gate)
+    _email_security_head(visitor_pass, "Check-In", subject, timestamp, gate)
+    _email_invitation_creator(visitor_pass, "Check-In", subject, timestamp, gate)
+
+
+def _notify_checkout(visitor_pass, security_log):
+    """Dispatch all check-out notification emails.
+
+    Recipients:
+      1. Host employee (person_to_visit).
+      2. All Security Head role users.
+      3. Invitation creator (if set).
+    """
+    visitor_name = visitor_pass.visitor_full_name or "Unknown"
+    visitor_type = visitor_pass.visitor_type or "Visitor"
+    subject = f"Visitor Checked Out: {visitor_name} ({visitor_type})"
+    timestamp = security_log.check_out_date_time or now_datetime()
+    gate = security_log.gate_name or None
+
+    _email_host(visitor_pass, "Check-Out", subject, timestamp, gate)
+    _email_security_head(visitor_pass, "Check-Out", subject, timestamp, gate)
+    _email_invitation_creator(visitor_pass, "Check-Out", subject, timestamp, gate)
 
 
 class SecurityLog(Document):
@@ -21,10 +241,42 @@ class SecurityLog(Document):
         if self.visitor_pass:
             vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
 
-        # 1. Auto-fetch visitor info
-        if vp and not self.visitor_name:
-            self.badge_number = vp.badge_number
-            self.visitor_name = vp.visitor_name
+        # 0. Re-check blacklist at gate — blacklisting could have happened AFTER pass approval
+        if vp and self.event_type == 'Check-In' and vp.id_proof_number:
+            blacklist_name = frappe.db.exists(
+                'Visitor Blacklist',
+                {'id_proof_number': vp.id_proof_number, 'is_active': 1},
+            )
+            if blacklist_name:
+                bl = frappe.get_doc('Visitor Blacklist', blacklist_name)
+                frappe.throw(
+                    f"<b>ACCESS DENIED AT GATE</b><br>"
+                    f"Visitor: {vp.visitor_full_name}<br>"
+                    f"ID Proof matches active blacklist entry.<br>"
+                    f"Reason: {bl.reason or 'Not specified'}<br>"
+                    f"Blocked by: {bl.blocked_by or 'System'}",
+                    title='BLACKLISTED VISITOR',
+                )
+
+        # 1. Auto-fetch visitor info and ID details
+        if vp:
+            # VIP badges are issued only during the gate check-in flow.
+            if not vp.badge_number and self.event_type == 'Check-In' and vp.visitor_type == 'VIP':
+                vp.generate_badge_number()
+                vp.reload()
+            
+            if not self.badge_number:
+                self.badge_number = vp.badge_number
+            if not self.visitor_name:
+                self.visitor_name = vp.visitor_full_name
+            if not self.visitor_photo:
+                self.visitor_photo = vp.visitor_photo
+            if not self.id_proof_scan:
+                self.id_proof_scan = vp.id_proof_scan
+
+            # Mask ID proof number — gate security only needs last 4 digits
+            if vp.id_proof_number:
+                self.id_proof_number = mask_id_number(str(vp.id_proof_number).strip())
 
         # 2. Auto-assign gate
         if vp and not self.gate_name:
@@ -38,12 +290,68 @@ class SecurityLog(Document):
             self.gate_name = gate_rules.get(vp.visitor_type, 'Main Gate')
             self.gate_auto_assigned = 1
 
-        # 3. Auto-stamp datetime
+        # 3. Auto-stamp datetime and validate status sequence
         now = now_datetime()
-        if self.event_type == 'Check-In' and not self.checkin_datetime:
-            self.checkin_datetime = now
-        elif self.event_type == 'Check-Out' and not self.checkout_datetime:
-            self.checkout_datetime = now
+        if not self.verification_started_on:
+            self.verification_started_on = now
+
+        if vp:
+            current_status = vp.status
+            if self.event_type == 'Check-In':
+                if current_status not in {'Approved', 'Items Verified'}:
+                    frappe.throw(
+                        f"Visitor {self.visitor_name or vp.visitor_full_name} must be approved before check-in. (Current Status: {current_status})"
+                    )
+                if current_status == 'Checked-In':
+                    frappe.throw(f"Visitor {self.visitor_name} is already Checked-In.")
+                if current_status == 'Checked-Out':
+                    frappe.throw(f"Visitor {self.visitor_name} has already Checked-Out and the pass is now inactive.")
+                
+                if not self.check_in_date_time:
+                    self.check_in_date_time = now
+
+                # Validate check-in is within reasonable window of expected visit
+                if vp.visit_date and self.check_in_date_time:
+                    from frappe.utils import getdate, get_datetime as _get_dt
+                    checkin_date = getdate(self.check_in_date_time)
+                    expected_date = getdate(vp.visit_date)
+                    if checkin_date < expected_date:
+                        frappe.throw(
+                            f"Check-in date ({checkin_date}) is before the scheduled visit date ({expected_date}). Cannot check in early."
+                        )
+                    if checkin_date > expected_date:
+                        frappe.throw(
+                            f"Check-in date ({checkin_date}) is after the scheduled visit date ({expected_date}). Pass is no longer valid for this date."
+                        )
+
+                if self.verification_started_on and self.check_in_date_time:
+                    self.verification_duration = time_diff_in_seconds(
+                        self.check_in_date_time,
+                        self.verification_started_on,
+                    )
+
+            elif self.event_type == 'Check-Out':
+                if current_status != 'Checked-In':
+                    frappe.throw(f"Visitor {self.visitor_name} must be 'Checked-In' before they can 'Check-Out'. (Current Status: {current_status})")
+
+                if not self.check_out_date_time:
+                    self.check_out_date_time = now
+
+                # Check-out must be after check-in
+                prior_checkin = frappe.db.get_value(
+                    "Security Log",
+                    {"visitor_pass": self.visitor_pass, "event_type": "Check-In", "docstatus": ["<", 2]},
+                    "check_in_date_time",
+                )
+                if prior_checkin and get_datetime(self.check_out_date_time) <= get_datetime(prior_checkin):
+                    frappe.throw(
+                        f"Check-out time ({self.check_out_date_time}) must be after check-in time ({prior_checkin})."
+                    )
+
+            elif self.event_type == 'Gate Transfer' and current_status != 'Checked-In':
+                frappe.throw(
+                    f"Visitor {self.visitor_name} must be 'Checked-In' before a gate transfer can be logged."
+                )
 
         # 4. Auto-set security officer
         if not self.security_officer:
@@ -55,33 +363,56 @@ class SecurityLog(Document):
             if emp:
                 self.security_officer = emp
 
-        # 5. Populate item table ONLY on new Check-In
+        if self.event_type == 'Check-In':
+            if not self.photo_at_gate:
+                frappe.throw("Capture a live gate photo before saving the visitor check-in.")
+
+            if not self.id_proof_match:
+                frappe.throw("Confirm that the visitor matches the ID proof before saving the visitor check-in.")
+
+            if not self.pass_photo_match:
+                frappe.throw("Confirm that the visitor matches the pass creation photo before saving the visitor check-in.")
+
+            health_status = derive_health_screening_status(
+                temperature=self.temperature,
+                symptoms_flag=self.symptoms_flag,
+            )
+            if health_status == "Denied Entry":
+                frappe.throw(
+                    "Health screening failed due to the recorded temperature. Entry cannot be completed until the health status is acceptable."
+                )
+
+        if self.event_type == 'Gate Transfer' and not self.visited_area:
+            frappe.throw("Visited Area is required for gate transfer tracking.")
+
         if (
             self.is_new()
             and self.event_type == 'Check-In'
             and vp
-            and not self.security_item_verify
+            and not self.items_verification
         ):
-            for vi in (vp.visitor_items or []):
-                self.append('security_item_verify', {
-                    'visitor_item_row': vi.name,
+            # Try to fetch from visitor_items if it exists
+            items = vp.get('visitor_items') or []
+            for vi in items:
+                self.append('items_verification', {
+                    'visitor_item_row_name': vi.name,
                     'item_name': vi.item_name,
                     'item_category': vi.item_category,
-                    'qty_declared': vi.qty,
-                    'uom': vi.uom,
-                    'serial_number': vi.serial_number,
-                    'qty_found': vi.qty,
+                    'quantity_declared': vi.quantity,
+                    'uom': vi.unit_of_measure,
+                    'serial__asset_number': vi.serial_number,
+                    'quantity_found': vi.quantity,
                     'item_verified': 0,
+                    # item_image is captured by the gate officer at scan time, not copied from Visitor Item.
                 })
 
-        # 6. Detect discrepancy
-        for row in (self.security_item_verify or []):
-            if row.qty_found is not None and row.qty_declared is not None:
-                row.discrepancy = 1 if row.qty_found != row.qty_declared else 0
+        for row in (self.items_verification or []):
+            if row.quantity_found is not None and row.quantity_declared is not None:
+                row.discrepancy = 1 if row.quantity_found != row.quantity_declared else 0
 
         # 7. Check if all items confirmed
-        if self.security_item_verify:
-            all_ok = all(r.item_verified for r in self.security_item_verify)
+        if self.items_verification:
+            all_ok = all(r.item_verified for r in self.items_verification)
             self.all_items_confirmed = 1 if all_ok else 0
         else:
             self.all_items_confirmed = 1
@@ -93,21 +424,95 @@ class SecurityLog(Document):
             return
 
         if self.event_type == 'Check-In':
+            self._sync_gate_verification()
             self._sync_item_verification()
+            # Also update the Pass status to Checked-In
+            frappe.db.set_value(
+                'Visitor Pass',
+                self.visitor_pass,
+                {
+                    'status': 'Checked-In',
+                    'actual_checkin': self.check_in_date_time or now_datetime(),
+                    'no_show': 0,
+                },
+            )
+            # Load visitor pass for notification helpers (status already updated above via set_value)
+            _vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
+            _notify_checkin(_vp, self)
 
         elif self.event_type == 'Check-Out':
             frappe.db.set_value(
                 'Visitor Pass',
                 self.visitor_pass,
-                'status',
-                'Checked-Out'
+                {
+                    'status': 'Checked-Out',
+                    'actual_checkout': self.check_out_date_time or now_datetime(),
+                },
             )
+
+            # Auto-close any pending Evacuation Muster records for this visitor —
+            # they've left the premises, so they're no longer at risk.
+            pending_musters = frappe.get_all(
+                'Evacuation Muster',
+                filters={'visitor_pass': self.visitor_pass, 'accounted_status': ['in', ['Pending', 'Missing']]},
+                pluck='name',
+            )
+            for muster_name in pending_musters:
+                frappe.db.set_value(
+                    'Evacuation Muster', muster_name,
+                    {
+                        'accounted_status': 'Excused',
+                        'accounted_time': now_datetime(),
+                        'notes': (frappe.db.get_value('Evacuation Muster', muster_name, 'notes') or '') +
+                                 f"\nAuto-closed: visitor checked out at {now_datetime()}.",
+                    },
+                )
+
+            # Send check-out notifications to host, Security Head, and invitation creator.
+            _vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
+            _notify_checkout(_vp, self)
+
+        self._record_lifecycle_event()
+        sync_health_screening(self.visitor_pass, self)
+        sync_contact_trace(self.visitor_pass, self)
+        sync_compliance_check(self.visitor_pass, self)
 
     # --------------------------------------------------
 
     def on_update(self):
         if self.event_type == 'Check-In' and self.visitor_pass:
+            if not self.photo_at_gate:
+                vp_photo = frappe.db.get_value('Visitor Pass', self.visitor_pass, 'visitor_photo')
+                if vp_photo:
+                    self.photo_at_gate = vp_photo
+            self._sync_gate_verification()
             self._sync_item_verification()
+
+        if self.visitor_pass:
+            self._record_lifecycle_event()
+            sync_health_screening(self.visitor_pass, self)
+            sync_contact_trace(self.visitor_pass, self)
+            sync_compliance_check(self.visitor_pass, self)
+
+    # --------------------------------------------------
+
+    def _sync_gate_verification(self):
+        if not self.visitor_pass or not self.photo_at_gate:
+            return
+
+        values = {
+            'gate_verified_photo': self.photo_at_gate,
+            'gate_verified_on': self.check_in_date_time or now_datetime(),
+        }
+
+        if self.security_officer:
+            values['gate_verified_by'] = self.security_officer
+
+        visitor_type = frappe.db.get_value('Visitor Pass', self.visitor_pass, 'visitor_type')
+        if visitor_type == 'VIP':
+            values['visitor_photo'] = self.photo_at_gate
+
+        frappe.db.set_value('Visitor Pass', self.visitor_pass, values)
 
     # --------------------------------------------------
 
@@ -115,9 +520,9 @@ class SecurityLog(Document):
 
         vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
 
-        total_items = len(self.security_item_verify or [])
+        total_items = len(self.items_verification or [])
         verified_count = sum(
-            1 for r in (self.security_item_verify or [])
+            1 for r in (self.items_verification or [])
             if r.item_verified
         )
 
@@ -132,14 +537,22 @@ class SecurityLog(Document):
             items_verified_flag = 0
 
         # Update Visitor Item rows
-        for row in (self.security_item_verify or []):
-            if row.visitor_item_row:
+        for row in (self.items_verification or []):
+            if row.visitor_item_row_name:
+                verification_remarks = row.security_remarks
+                if not verification_remarks:
+                    verification_remarks = (
+                        'Verified at gate'
+                        if row.item_verified
+                        else 'Pending security verification'
+                    )
+
                 frappe.db.set_value(
                     'Visitor Item',
-                    row.visitor_item_row,
+                    row.visitor_item_row_name,
                     {
-                        'is_verified': row.item_verified,
-                        'verification_remarks': row.security_remarks,
+                        'verified_by_security': row.item_verified,
+                        'verification_remarks': verification_remarks,
                     }
                 )
 
@@ -162,3 +575,62 @@ class SecurityLog(Document):
                 alert=True,
                 indicator='green'
             )
+
+    def _notify_host_arrival(self):
+        # Deprecated: superseded by _notify_checkin() which is called directly
+        # from after_insert. Kept as a no-op to avoid AttributeError if any
+        # external script still calls this method.
+        pass
+
+    def _record_lifecycle_event(self):
+        if not self.visitor_pass:
+            return
+
+        log_visitor_event(
+            self.visitor_pass,
+            self.event_type,
+            event_status="Recorded",
+            source_doctype=self.doctype,
+            source_name=self.name,
+            details={
+                "gate_name": self.gate_name,
+                "visited_area": self.visited_area,
+                "security_officer": self.security_officer,
+                "exception_reason": self.exception_reason,
+                "health_screening_status": self.health_screening_status,
+            },
+        )
+
+
+@frappe.whitelist()
+def get_approved_vip_queue(visit_date=None):
+	target_date = getdate(visit_date) if visit_date else getdate()
+	return frappe.get_all(
+		"Visitor Pass",
+		filters={
+			"visitor_type": "VIP",
+			"visit_date": target_date,
+			"status": ["in", ["Approved", "Items Verified", "Checked-In"]],
+		},
+		fields=[
+			"name",
+			"visitor_full_name",
+			"company__organisation",
+			"visit_date",
+			"expected_checkin",
+			"expected_checkout",
+			"person_to_visit",
+			"purpose_of_visit",
+			"status",
+			"workflow_state",
+			"priority_lane",
+			"mdceo_notified",
+			"conference_room",
+			"welcome_gift",
+			"meal_type",
+			"number_of_people",
+			"items_carried",
+			"protocol_notes",
+		],
+		order_by="expected_checkin asc, modified asc",
+	)

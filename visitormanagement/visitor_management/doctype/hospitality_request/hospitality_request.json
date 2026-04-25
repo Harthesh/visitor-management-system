@@ -1,0 +1,669 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-04-05 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "visitor_pass",
+  "visitor_name_display",
+  "visitor_type_display",
+  "visitor_mobile_display",
+  "cab_required",
+  "hotel_required",
+  "factory_tour_required",
+  "buggy_required",
+  "greeting_required",
+  "visit_start_time",
+  "visit_end_time",
+  "assigned_meal_slots",
+  "hospitality_type",
+  "special_diet",
+  "meal_required",
+  "meal_type",
+  "snacks_required",
+  "tea_coffee_required",
+  "conference_room",
+  "seating_capacity",
+  "service_time",
+  "assigned_staff",
+  "cab_section",
+  "cab_type",
+  "pickup_location",
+  "pickup_datetime",
+  "drop_location",
+  "drop_datetime",
+  "cab_col_break",
+  "cab_vendor",
+  "driver_name",
+  "driver_phone",
+  "vehicle_number",
+  "hotel_section",
+  "hotel_name",
+  "check_in",
+  "check_out",
+  "nights",
+  "hotel_col_break",
+  "room_type",
+  "no_of_rooms",
+  "no_of_guests",
+  "booking_reference",
+  "hotel_cost",
+  "factory_tour_section",
+  "tour_date",
+  "tour_start_time",
+  "tour_end_time",
+  "tour_guide",
+  "tour_col_break",
+  "safety_briefing_done",
+  "ppe_issued",
+  "nda_signed",
+  "tour_areas",
+  "buggy_section",
+  "buggy_pickup_point",
+  "buggy_drop_point",
+  "buggy_datetime",
+  "buggy_col_break",
+  "buggy_number",
+  "buggy_driver",
+  "buggy_passenger_count",
+  "greeting_section",
+  "greeting_type",
+  "greeting_delivery_time",
+  "greeting_delivery_point",
+  "greeting_col_break",
+  "greeting_assigned_to",
+  "greeting_cost",
+  "status",
+  "notes",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "visitor_pass",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Visitor Pass",
+   "options": "Visitor Pass",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "visitor_pass.visitor_full_name",
+   "fieldname": "visitor_name_display",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Visitor Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "visitor_pass.visitor_type",
+   "fieldname": "visitor_type_display",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Visitor Type",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "visitor_pass.mobile_number",
+   "fieldname": "visitor_mobile_display",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Mobile",
+   "options": "Phone",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "visitor_pass.cab_required",
+   "fieldname": "cab_required",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Cab Required",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "visitor_pass.hotel_required",
+   "fieldname": "hotel_required",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Hotel Required",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "visitor_pass.factory_tour_required",
+   "fieldname": "factory_tour_required",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Factory Tour Required",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "visitor_pass.buggy_required",
+   "fieldname": "buggy_required",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Buggy Required",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "visitor_pass.greeting_required",
+   "fieldname": "greeting_required",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Greeting Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "visit_start_time",
+   "fieldtype": "Datetime",
+   "label": "Visit Start Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "visit_end_time",
+   "fieldtype": "Datetime",
+   "label": "Visit End Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "assigned_meal_slots",
+   "fieldtype": "Small Text",
+   "label": "Assigned Meal Slots",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hospitality_type",
+   "fieldtype": "Select",
+   "label": "Hospitality Type",
+   "options": "Single Meal\nTwo Meals\nFull Day",
+   "read_only": 1
+  },
+  {
+   "fieldname": "special_diet",
+   "fieldtype": "Select",
+   "label": "Special Diet",
+   "options": "None\nNon-vegetarian\nVegetarian\nVegan\nGluten Free\nHalal\nJain"
+  },
+  {
+   "default": "0",
+   "fieldname": "meal_required",
+   "fieldtype": "Check",
+   "label": "Meal Required"
+  },
+  {
+   "fieldname": "meal_type",
+   "fieldtype": "Select",
+   "label": "Meal Type",
+   "options": "Breakfast\nLunch\nDinner\nBreakfast + Lunch\nLunch + Dinner\nBreakfast + Dinner\nSnacks\nAll Day"
+  },
+  {
+   "default": "0",
+   "fieldname": "snacks_required",
+   "fieldtype": "Check",
+   "label": "Snacks Required"
+  },
+  {
+   "default": "0",
+   "fieldname": "tea_coffee_required",
+   "fieldtype": "Check",
+   "label": "Tea / Coffee Required"
+  },
+  {
+   "fieldname": "conference_room",
+   "fieldtype": "Link",
+   "label": "Conference Room",
+   "options": "Conference Room"
+  },
+  {
+   "fieldname": "seating_capacity",
+   "fieldtype": "Int",
+   "label": "Seating Capacity"
+  },
+  {
+   "fieldname": "service_time",
+   "fieldtype": "Datetime",
+   "label": "Service Time"
+  },
+  {
+   "fieldname": "assigned_staff",
+   "fieldtype": "Link",
+   "label": "Assigned Staff",
+   "options": "Employee"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "cab_section",
+   "fieldtype": "Section Break",
+   "label": "Cab / Transport"
+  },
+  {
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "cab_type",
+   "fieldtype": "Select",
+   "label": "Cab Type",
+   "options": "\nPickup\nDrop\nBoth"
+  },
+  {
+   "depends_on": "eval:doc.cab_required && (doc.cab_type=='Pickup' || doc.cab_type=='Both')",
+   "fieldname": "pickup_location",
+   "fieldtype": "Data",
+   "label": "Pickup Location"
+  },
+  {
+   "depends_on": "eval:doc.cab_required && (doc.cab_type=='Pickup' || doc.cab_type=='Both')",
+   "fieldname": "pickup_datetime",
+   "fieldtype": "Datetime",
+   "label": "Pickup Datetime"
+  },
+  {
+   "depends_on": "eval:doc.cab_required && (doc.cab_type=='Drop' || doc.cab_type=='Both')",
+   "fieldname": "drop_location",
+   "fieldtype": "Data",
+   "label": "Drop Location"
+  },
+  {
+   "depends_on": "eval:doc.cab_required && (doc.cab_type=='Drop' || doc.cab_type=='Both')",
+   "fieldname": "drop_datetime",
+   "fieldtype": "Datetime",
+   "label": "Drop Datetime"
+  },
+  {
+   "fieldname": "cab_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "cab_vendor",
+   "fieldtype": "Link",
+   "label": "Cab Vendor / Driver",
+   "options": "Employee"
+  },
+  {
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name"
+  },
+  {
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "driver_phone",
+   "fieldtype": "Data",
+   "label": "Driver Phone",
+   "options": "Phone"
+  },
+  {
+   "depends_on": "eval:doc.cab_required",
+   "fieldname": "vehicle_number",
+   "fieldtype": "Data",
+   "label": "Vehicle Number"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "hotel_section",
+   "fieldtype": "Section Break",
+   "label": "Hotel Booking"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "hotel_name",
+   "fieldtype": "Link",
+   "label": "Hotel Contact",
+   "options": "Employee"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "check_in",
+   "fieldtype": "Date",
+   "label": "Check-in Date"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "check_out",
+   "fieldtype": "Date",
+   "label": "Check-out Date"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "nights",
+   "fieldtype": "Int",
+   "label": "Nights",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hotel_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "room_type",
+   "fieldtype": "Select",
+   "label": "Room Type",
+   "options": "\nStandard\nDeluxe\nSuite\nExecutive"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "no_of_rooms",
+   "fieldtype": "Int",
+   "label": "No of Rooms"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "no_of_guests",
+   "fieldtype": "Int",
+   "label": "No of Guests"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "booking_reference",
+   "fieldtype": "Data",
+   "label": "Booking Reference"
+  },
+  {
+   "depends_on": "eval:doc.hotel_required",
+   "fieldname": "hotel_cost",
+   "fieldtype": "Currency",
+   "label": "Hotel Cost"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "factory_tour_section",
+   "fieldtype": "Section Break",
+   "label": "Factory Tour"
+  },
+  {
+   "depends_on": "eval:doc.factory_tour_required",
+   "description": "Auto-set from Visitor Pass visit date",
+   "fieldname": "tour_date",
+   "fieldtype": "Date",
+   "label": "Tour Date",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "tour_start_time",
+   "fieldtype": "Time",
+   "label": "Tour Start Time"
+  },
+  {
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "tour_end_time",
+   "fieldtype": "Time",
+   "label": "Tour End Time"
+  },
+  {
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "tour_guide",
+   "fieldtype": "Link",
+   "label": "Tour Guide",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "tour_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "safety_briefing_done",
+   "fieldtype": "Check",
+   "label": "Safety Briefing Done"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "ppe_issued",
+   "fieldtype": "Check",
+   "label": "PPE Issued"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "nda_signed",
+   "fieldtype": "Check",
+   "label": "NDA Signed"
+  },
+  {
+   "depends_on": "eval:doc.factory_tour_required",
+   "fieldname": "tour_areas",
+   "fieldtype": "Table",
+   "label": "Tour Areas",
+   "options": "Factory Tour Area"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_section",
+   "fieldtype": "Section Break",
+   "label": "Buggy Vehicle"
+  },
+  {
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_pickup_point",
+   "fieldtype": "Data",
+   "label": "Buggy Pickup Point"
+  },
+  {
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_drop_point",
+   "fieldtype": "Data",
+   "label": "Buggy Drop Point"
+  },
+  {
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_datetime",
+   "fieldtype": "Datetime",
+   "label": "Buggy Datetime"
+  },
+  {
+   "fieldname": "buggy_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_number",
+   "fieldtype": "Data",
+   "label": "Buggy Number"
+  },
+  {
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_driver",
+   "fieldtype": "Link",
+   "label": "Buggy Driver",
+   "options": "Employee"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.buggy_required",
+   "fieldname": "buggy_passenger_count",
+   "fieldtype": "Int",
+   "label": "Passenger Count"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_section",
+   "fieldtype": "Section Break",
+   "label": "Greeting Arrangement"
+  },
+  {
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_type",
+   "fieldtype": "Select",
+   "label": "Greeting Type",
+   "options": "\nBouquet\nGift\nWelcome Board\nCake\nTraditional Welcome"
+  },
+  {
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_delivery_time",
+   "fieldtype": "Datetime",
+   "label": "Delivery Time"
+  },
+  {
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_delivery_point",
+   "fieldtype": "Data",
+   "label": "Delivery Point"
+  },
+  {
+   "fieldname": "greeting_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "Employee"
+  },
+  {
+   "depends_on": "eval:doc.greeting_required",
+   "fieldname": "greeting_cost",
+   "fieldtype": "Currency",
+   "label": "Greeting Cost"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Pending\nConfirmed\nServed\nCompleted\nCancelled"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Hospitality Request",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-04-13 12:50:40.424566",
+ "modified_by": "Administrator",
+ "module": "Visitor Management",
+ "name": "Hospitality Request",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Hospitality User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Host Employee",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Hospitality Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Transport Coordinator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Front Office Executive",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Factory Tour Coordinator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Greeting Staff",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Visitor Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

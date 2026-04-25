@@ -43,7 +43,7 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Job Applicant": "public/js/job_applicant.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -124,6 +124,13 @@ app_license = "mit"
 # has_permission = {
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
+permission_query_conditions = {
+	"Visitor Pass": "visitormanagement.permissions.get_visitor_pass_permission_query_conditions",
+}
+
+has_permission = {
+	"Visitor Pass": "visitormanagement.permissions.has_visitor_pass_permission",
+}
 
 # DocType Class
 # ---------------
@@ -144,27 +151,26 @@ app_license = "mit"
 # 		"on_trash": "method"
 # 	}
 # }
+doc_events = {
+	"Job Applicant": {
+		"after_insert": "visitormanagement.visitor_management.candidate_flow.maybe_create_invitation",
+		"on_update": "visitormanagement.visitor_management.candidate_flow.maybe_create_invitation",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"visitormanagement.tasks.all"
-# 	],
-# 	"daily": [
-# 		"visitormanagement.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"visitormanagement.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"visitormanagement.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"visitormanagement.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		"0 7 * * *": [
+			"visitormanagement.visitor_management.tasks.send_daily_hospitality_digest"
+		],
+		"0 20 * * *": [
+			"visitormanagement.visitor_management.tasks.send_unchecked_out_digest"
+		],
+	}
+}
 
 # Testing
 # -------
@@ -251,17 +257,50 @@ fixtures = [
     {
         "doctype": "Workflow",
         "filters": [
-            ["name", "in", ["VIP FLOW", "CANDIDATE FLOW", "CUSTOMER FLOW", "VMS Contractor Approval"]]
+            ["name", "in", [
+                "Visitor Pass Approval",
+                "Conference Room Booking Approval",
+                "Hospitality Request Approval",
+            ]]
+        ]
+    },
+    {
+        "doctype": "Role",
+        "filters": [
+            ["name", "in", [
+                "Hospitality User",
+                "Facility Manager",
+                "Host Employee",
+                "Hospitality Manager",
+                "Transport Coordinator",
+                "Front Office Executive",
+                "Factory Tour Coordinator",
+                "Greeting Staff",
+                "Security Head",
+            ]]
         ]
     },
     "Workflow State",
     "Workflow Action",
     {
-        "doctype": "Dashboard",
+        "doctype": "Custom Field",
         "filters": [
-            ["name", "=", "VMS Security Dashboard"]
+            ["name", "in", [
+                "Job Applicant-vms_section_break",
+                "Job Applicant-interview_mode",
+                "Job Applicant-interview_host",
+                "Job Applicant-vms_column_break",
+                "Job Applicant-interview_visit_date",
+                "Job Applicant-interview_checkin_time",
+                "Job Applicant-interview_checkout_time",
+                "Visitor Invitation-reference_job_applicant",
+                "Visitor Invitation-visitor_mobile",
+                "Visitor Invitation-visitor_full_name",
+            ]]
         ]
-    },
-    "Dashboard Chart",
-    "Number Card"
+    }
+]
+
+after_migrate = [
+    "visitormanagement.patches.post_model_sync.sync_vip_alert_notification.execute",
 ]
