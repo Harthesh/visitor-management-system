@@ -6,31 +6,46 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "section_visitor_details",
   "visitor_type",
   "visitor_email",
   "host_employee",
+  "purpose_of_visit",
+  "column_visitor_right",
   "visit_date",
   "expected_checkin",
   "expected_checkout",
-  "purpose_of_visit",
+  "section_meal_hospitality",
   "meal_required",
   "meal_type",
   "assigned_meal_slots",
+  "column_meal_right",
   "hospitality_type",
   "refreshments_required",
   "conference_room",
-  "created_by_user",
+  "section_invitation_status",
   "invitation_status",
   "invitation_sent_on",
   "invitation_expires_on",
+  "column_invitation_right",
+  "portal_submission_url",
+  "created_by_user",
+  "section_tracking",
   "link_opened_on",
   "form_saved_on",
+  "column_tracking_right",
   "form_submitted_on",
-  "portal_submission_url",
+  "section_references",
   "visitor_pass",
+  "column_references_right",
   "invitation_token"
  ],
  "fields": [
+  {
+   "fieldname": "section_visitor_details",
+   "fieldtype": "Section Break",
+   "label": "Visitor Details"
+  },
   {
    "fieldname": "visitor_type",
    "fieldtype": "Select",
@@ -55,6 +70,15 @@
    "reqd": 1
   },
   {
+   "fieldname": "purpose_of_visit",
+   "fieldtype": "Small Text",
+   "label": "Purpose Of Visit"
+  },
+  {
+   "fieldname": "column_visitor_right",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "visit_date",
    "fieldtype": "Date",
    "in_list_view": 1,
@@ -74,9 +98,10 @@
    "reqd": 1
   },
   {
-   "fieldname": "purpose_of_visit",
-   "fieldtype": "Small Text",
-   "label": "Purpose Of Visit"
+   "collapsible": 1,
+   "fieldname": "section_meal_hospitality",
+   "fieldtype": "Section Break",
+   "label": "Meal & Hospitality"
   },
   {
    "default": "0",
@@ -101,6 +126,10 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_meal_right",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "hospitality_type",
    "fieldtype": "Select",
    "hidden": 1,
@@ -122,10 +151,9 @@
    "label": "Conference Room"
   },
   {
-   "fieldname": "created_by_user",
-   "fieldtype": "Data",
-   "label": "Created By User",
-   "read_only": 1
+   "fieldname": "section_invitation_status",
+   "fieldtype": "Section Break",
+   "label": "Invitation Status"
   },
   {
    "default": "Draft",
@@ -148,6 +176,28 @@
    "label": "Invitation Expires On"
   },
   {
+   "fieldname": "column_invitation_right",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "portal_submission_url",
+   "fieldtype": "Small Text",
+   "label": "Portal Submission URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Data",
+   "label": "Created By User",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_tracking",
+   "fieldtype": "Section Break",
+   "label": "Tracking"
+  },
+  {
    "fieldname": "link_opened_on",
    "fieldtype": "Datetime",
    "label": "Link Opened On",
@@ -160,16 +210,19 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_tracking_right",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "form_submitted_on",
    "fieldtype": "Datetime",
    "label": "Form Submitted On",
    "read_only": 1
   },
   {
-   "fieldname": "portal_submission_url",
-   "fieldtype": "Small Text",
-   "label": "Portal Submission URL",
-   "read_only": 1
+   "fieldname": "section_references",
+   "fieldtype": "Section Break",
+   "label": "References"
   },
   {
    "fieldname": "visitor_pass",
@@ -177,6 +230,10 @@
    "label": "Visitor Pass",
    "options": "Visitor Pass",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_references_right",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "invitation_token",
@@ -189,7 +246,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-10 10:42:40.104275",
+ "modified": "2026-04-22 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Visitor Management",
  "name": "Visitor Invitation",

@@ -25,6 +25,9 @@ def maybe_create_invitation(doc, method=None):
 	checkout = doc.get("interview_checkout_time") or "11:00:00"
 	purpose = f"Interview - {doc.get('designation') or doc.get('job_title') or 'Open Position'}"
 
+	position = doc.get("job_title") or doc.get("designation") or ""
+	interview_type = doc.get("candidate_interview_type") or ""
+
 	inv = frappe.new_doc("Visitor Invitation")
 	inv.update({
 		"visitor_type": "Candidate",
@@ -37,13 +40,18 @@ def maybe_create_invitation(doc, method=None):
 		"expected_checkout": checkout,
 		"purpose_of_visit": purpose,
 		"reference_job_applicant": doc.name,
+		"position_applied": position,
+		"candidate_interview_type": interview_type,
 	})
 	inv.insert(ignore_permissions=True)
 
-	try:
-		inv.send_invitation()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Candidate Flow: send_invitation failed")
+	# after_insert auto-send fires during insert() above and sets invitation_status to "Sent".
+	# Only call send_invitation() here if auto-send did not succeed (e.g. no outgoing mail account).
+	if inv.invitation_status != "Sent":
+		try:
+			inv.send_invitation()
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Candidate Flow: send_invitation failed")
 
 	frappe.msgprint(
 		_("Visitor Invitation {0} created and sent to {1}.").format(

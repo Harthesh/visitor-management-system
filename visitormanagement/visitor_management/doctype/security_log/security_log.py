@@ -62,39 +62,174 @@ def _get_employee_email(employee_name):
     return employee.company_email or employee.personal_email or employee.user_id
 
 
-def _send_host_checkin_email(visitor_pass, security_log):
-    host_email = _get_employee_email(visitor_pass.person_to_visit)
-    if not host_email:
-        return
-
-    items_summary = "No items declared."
-    if visitor_pass.visitor_items:
-        item_lines = []
-        for item in visitor_pass.visitor_items:
-            line = item.item_name
-            if item.quantity:
-                line = f"{line} | Qty: {item.quantity}"
-            if item.serial_number:
-                line = f"{line} | S/N: {item.serial_number}"
-            item_lines.append(line)
-        items_summary = "<br>".join(item_lines)
-
-    frappe.sendmail(
-        recipients=[host_email],
-        subject=f"Visitor Arrived: {visitor_pass.visitor_full_name}",
-        message=(
-            f"<p>Visitor <b>{visitor_pass.visitor_full_name}</b> has checked in.</p>"
-            "<table style='border-collapse: collapse;'>"
-            f"<tr><td style='padding:4px 8px;'><b>Pass ID</b></td><td style='padding:4px 8px;'>{visitor_pass.name}</td></tr>"
-            f"<tr><td style='padding:4px 8px;'><b>Visitor Type</b></td><td style='padding:4px 8px;'>{visitor_pass.visitor_type or '-'}</td></tr>"
-            f"<tr><td style='padding:4px 8px;'><b>Purpose</b></td><td style='padding:4px 8px;'>{visitor_pass.purpose_of_visit or '-'}</td></tr>"
-            f"<tr><td style='padding:4px 8px;'><b>Check-In Time</b></td><td style='padding:4px 8px;'>{security_log.check_in_date_time or now_datetime()}</td></tr>"
-            f"<tr><td style='padding:4px 8px;'><b>Gate</b></td><td style='padding:4px 8px;'>{security_log.gate_name or '-'}</td></tr>"
-            f"<tr><td style='padding:4px 8px;'><b>Items Declared</b></td><td style='padding:4px 8px;'>{items_summary}</td></tr>"
-            "</table>"
-        ),
-        now=True,
+def _get_role_users(role_name):
+    """Return a list of enabled user email addresses that hold the given role."""
+    rows = frappe.get_all(
+        "Has Role",
+        filters={"role": role_name, "parenttype": "User"},
+        fields=["parent"],
     )
+    emails = []
+    for row in rows:
+        result = frappe.db.get_value("User", row.parent, ["enabled", "email"], as_dict=True)
+        if result and result.enabled and result.email:
+            emails.append(result.email)
+    return emails
+
+
+def _get_invitation_creator_email(visitor_pass):
+    """Return the created_by_user email from the linked Visitor Invitation, or None.
+
+    Skips blank, Administrator, and Guest values — those are system users that
+    should not receive operational emails.
+    """
+    if not visitor_pass.visitor_invitation:
+        return None
+    created_by = frappe.db.get_value(
+        "Visitor Invitation", visitor_pass.visitor_invitation, "created_by_user"
+    )
+    if not created_by:
+        return None
+    if created_by in ("Administrator", "Guest"):
+        return None
+    return created_by
+
+
+def _build_event_table(visitor_pass, event_type, timestamp, gate_name=None):
+    """Build an HTML table summarising the check-in or check-out event."""
+    base_url = frappe.utils.get_url()
+    pass_url = f"{base_url}/app/visitor-pass/{visitor_pass.name}"
+    label = "Check-In Time" if event_type == "Check-In" else "Check-Out Time"
+    return (
+        "<table style='border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;'>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>Visitor</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.visitor_full_name or '-'}</td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Type</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.visitor_type or '-'}</td></tr>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>Pass ID</b></td>"
+        f"<td style='padding:6px 10px;'><a href='{pass_url}'>{visitor_pass.name}</a></td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Host</b></td>"
+        f"<td style='padding:6px 10px;'>{visitor_pass.person_to_visit or '-'}</td></tr>"
+        f"<tr style='background:#f4f5f7;'><td style='padding:6px 10px;'><b>{label}</b></td>"
+        f"<td style='padding:6px 10px;'>{timestamp or now_datetime()}</td></tr>"
+        f"<tr><td style='padding:6px 10px;'><b>Gate</b></td>"
+        f"<td style='padding:6px 10px;'>{gate_name or '-'}</td></tr>"
+        "</table>"
+    )
+
+
+def _email_host(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to the host employee."""
+    try:
+        host_email = _get_employee_email(visitor_pass.person_to_visit)
+        if not host_email:
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=[host_email],
+            subject=subject,
+            message=f"<p>Hi {visitor_pass.person_to_visit or 'there'},</p>{table}",
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_host failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _email_security_head(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to all users with the Security Head role.
+
+    B19 guard: if no users hold Security Head role, this is a silent no-op.
+    Assign at least one user to the Security Head role to receive these emails.
+    """
+    try:
+        recipients = _get_role_users("Security Head")
+        if not recipients:
+            # No Security Head users assigned — silent no-op per B19 guard.
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=recipients,
+            subject=subject,
+            message=table,
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_security_head failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _email_invitation_creator(visitor_pass, event_type, subject, timestamp, gate_name=None):
+    """Send check-in or check-out email to the invitation creator if one exists."""
+    try:
+        creator_email = _get_invitation_creator_email(visitor_pass)
+        if not creator_email:
+            return
+        table = _build_event_table(visitor_pass, event_type, timestamp, gate_name)
+        frappe.sendmail(
+            recipients=[creator_email],
+            subject=subject,
+            message=(
+                f"<p>The visitor you invited has "
+                f"{'checked in' if event_type == 'Check-In' else 'checked out'}.</p>"
+                f"{table}"
+            ),
+            now=True,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"VMS: _email_invitation_creator failed for pass {visitor_pass.name} ({event_type})",
+        )
+
+
+def _notify_checkin(visitor_pass, security_log):
+    """Dispatch all check-in notification emails.
+
+    Recipients:
+      1. Host employee (person_to_visit).
+      2. All Security Head role users.
+      3. Invitation creator (if visitor_invitation is set and creator is not system user).
+
+    Each send is wrapped individually so one failure does not block the others.
+    The existing _send_host_checkin_email path (called via _notify_host_arrival)
+    was the legacy code path. This function supersedes it and is called from
+    after_insert. The VMS Host Alert Notification record is deleted by the
+    remove_legacy_duplicate_notifications patch (Item C) so there is no
+    duplicate email risk.
+    """
+    visitor_name = visitor_pass.visitor_full_name or "Unknown"
+    visitor_type = visitor_pass.visitor_type or "Visitor"
+    subject = f"Visitor Checked In: {visitor_name} ({visitor_type})"
+    timestamp = security_log.check_in_date_time or now_datetime()
+    gate = security_log.gate_name or None
+
+    _email_host(visitor_pass, "Check-In", subject, timestamp, gate)
+    _email_security_head(visitor_pass, "Check-In", subject, timestamp, gate)
+    _email_invitation_creator(visitor_pass, "Check-In", subject, timestamp, gate)
+
+
+def _notify_checkout(visitor_pass, security_log):
+    """Dispatch all check-out notification emails.
+
+    Recipients:
+      1. Host employee (person_to_visit).
+      2. All Security Head role users.
+      3. Invitation creator (if set).
+    """
+    visitor_name = visitor_pass.visitor_full_name or "Unknown"
+    visitor_type = visitor_pass.visitor_type or "Visitor"
+    subject = f"Visitor Checked Out: {visitor_name} ({visitor_type})"
+    timestamp = security_log.check_out_date_time or now_datetime()
+    gate = security_log.gate_name or None
+
+    _email_host(visitor_pass, "Check-Out", subject, timestamp, gate)
+    _email_security_head(visitor_pass, "Check-Out", subject, timestamp, gate)
+    _email_invitation_creator(visitor_pass, "Check-Out", subject, timestamp, gate)
 
 
 class SecurityLog(Document):
@@ -301,7 +436,9 @@ class SecurityLog(Document):
                     'no_show': 0,
                 },
             )
-            self._notify_host_arrival()
+            # Load visitor pass for notification helpers (status already updated above via set_value)
+            _vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
+            _notify_checkin(_vp, self)
 
         elif self.event_type == 'Check-Out':
             frappe.db.set_value(
@@ -330,6 +467,10 @@ class SecurityLog(Document):
                                  f"\nAuto-closed: visitor checked out at {now_datetime()}.",
                     },
                 )
+
+            # Send check-out notifications to host, Security Head, and invitation creator.
+            _vp = frappe.get_doc('Visitor Pass', self.visitor_pass)
+            _notify_checkout(_vp, self)
 
         self._record_lifecycle_event()
         sync_health_screening(self.visitor_pass, self)
@@ -436,11 +577,10 @@ class SecurityLog(Document):
             )
 
     def _notify_host_arrival(self):
-        if self.event_type != 'Check-In' or not self.visitor_pass:
-            return
-
-        visitor_pass = frappe.get_doc('Visitor Pass', self.visitor_pass)
-        _send_host_checkin_email(visitor_pass, self)
+        # Deprecated: superseded by _notify_checkin() which is called directly
+        # from after_insert. Kept as a no-op to avoid AttributeError if any
+        # external script still calls this method.
+        pass
 
     def _record_lifecycle_event(self):
         if not self.visitor_pass:

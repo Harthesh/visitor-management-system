@@ -165,7 +165,10 @@ scheduler_events = {
 	"cron": {
 		"0 7 * * *": [
 			"visitormanagement.visitor_management.tasks.send_daily_hospitality_digest"
-		]
+		],
+		"0 20 * * *": [
+			"visitormanagement.visitor_management.tasks.send_unchecked_out_digest"
+		],
 	}
 }
 
@@ -273,6 +276,7 @@ fixtures = [
                 "Front Office Executive",
                 "Factory Tour Coordinator",
                 "Greeting Staff",
+                "Security Head",
             ]]
         ]
     },

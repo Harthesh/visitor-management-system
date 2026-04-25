@@ -12,6 +12,9 @@ from visitormanagement.visitor_management.lifecycle import (
     ensure_hospitality_request,
     normalize_visitor_pass,
 )
+from visitormanagement.visitor_management.doctype.hospitality_request.hospitality_request import (
+    _get_hospitality_manager_emails,
+)
 
 PENDING_LANES_BY_VISITOR_TYPE = {
     "Contractor": ("Pending System Manager",),
@@ -53,6 +56,11 @@ class VisitorPass(Document):
 
     def before_insert(self):
         self._populate_default_declared_items()
+
+    def after_insert(self):
+        self._auto_advance_on_webform_submit()
+        self._fire_prr_submitted_notification()
+        self._notify_invitation_creator_of_submission()
 
     def _populate_default_declared_items(self):
         if self.amended_from or self.visitor_items:
@@ -106,13 +114,35 @@ class VisitorPass(Document):
                 )
 
     def _validate_formats(self):
-        """Validate email and ID proof number format per type."""
+        """Validate email, mobile number and ID proof number format per type."""
         if self.email_id:
             if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", self.email_id):
                 frappe.throw(
                     _("Email ID '{0}' is not a valid email address.").format(self.email_id),
                     title=_("Invalid Email"),
                 )
+
+        if self.mobile_number:
+            raw = str(self.mobile_number).strip()
+            digits = re.sub(r"\D", "", raw)
+            if raw.startswith("+91") or digits.startswith("91") and len(digits) > 10:
+                national = digits[2:] if digits.startswith("91") else digits
+                if len(national) != 10 or not national.isdigit():
+                    frappe.throw(
+                        _("Indian mobile number must be exactly 10 digits after +91. Got: {0}").format(raw),
+                        title=_("Invalid Mobile Number"),
+                    )
+                if national[0] not in "6789":
+                    frappe.throw(
+                        _("Indian mobile number must start with 6, 7, 8, or 9. Got: {0}").format(raw),
+                        title=_("Invalid Mobile Number"),
+                    )
+            else:
+                if len(digits) < 8 or len(digits) > 15:
+                    frappe.throw(
+                        _("Mobile number must be 8-15 digits (E.164). Got: {0}").format(raw),
+                        title=_("Invalid Mobile Number"),
+                    )
 
         if self.id_proof_type and self.id_proof_number:
             raw = str(self.id_proof_number).strip()
@@ -220,6 +250,173 @@ class VisitorPass(Document):
             and str(self.expected_checkout or "") == str(invitation.expected_checkout or "")
             and (self.person_to_visit or "") == (invitation.host_employee or "")
         )
+
+    # ─────────────────────────────────────────────────────────
+    # AFTER INSERT — web form submission hooks
+    # ─────────────────────────────────────────────────────────
+    def _auto_advance_on_webform_submit(self):
+        """Belt-and-suspenders workflow advance from Draft → correct Pending lane.
+
+        Primary advance is handled by portal.py (_get_portal_submission_state).
+        This method acts as a fallback in case the portal db_set hasn't committed
+        yet or a future code path creates passes with visitor_invitation set but
+        doesn't call portal.py.
+
+        Guards (P2-1, P2-2, P2-3, P2-4, P2-5, P2-10):
+        - Skip if visitor_invitation is empty → desk-created pass (P2-1).
+        - Skip if workflow_state is already not Draft/blank (P2-10, P2-5).
+        - Skip if docstatus != 0 (P2-5).
+        - Skip if visitor_type is missing (log warning).
+        """
+        try:
+            # P2-1: guard — only web form paths have visitor_invitation
+            if not self.visitor_invitation:
+                return
+
+            # P2-10 / P2-5: skip if already advanced beyond Draft
+            current_state = (self.workflow_state or "").strip()
+            if current_state and current_state != "Draft":
+                return
+
+            # P2-5: skip if submitted
+            if self.docstatus != 0:
+                return
+
+            if not self.visitor_type:
+                frappe.log_error(
+                    f"Visitor Pass {self.name}: visitor_type is empty — cannot auto-advance workflow.",
+                    "Auto-Advance Warning",
+                )
+                return
+
+            _WEBFORM_ADVANCE_MAP = {
+                "Contractor": "Pending System Manager",
+                "Supplier":   "Pending System Manager",
+                "Candidate":  "Pending HR Manager",
+                "Customer":   "Pending Sales Manager",
+                "VIP":        "Pending HOD",
+            }
+
+            target = _WEBFORM_ADVANCE_MAP.get(self.visitor_type)
+            if not target:
+                frappe.log_error(
+                    f"Visitor Pass {self.name}: visitor_type '{self.visitor_type}' not in advance map — skipping.",
+                    "Auto-Advance Warning",
+                )
+                return
+
+            # P2-2 / P2-4: use frappe.db.set_value — bypasses permission checks and
+            # workflow engine entirely; does not re-trigger after_insert.
+            frappe.db.set_value(
+                "Visitor Pass", self.name, "workflow_state", target, update_modified=False
+            )
+            frappe.db.set_value(
+                "Visitor Pass", self.name, "status", "Pending Approval", update_modified=False
+            )
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Auto-Advance Failed")
+
+    def _fire_prr_submitted_notification(self):
+        """Explicitly invoke the VMS PRR Submitted Notification document.
+
+        The notification is wired to "Value Change" on workflow_state — it does
+        not fire on after_insert or when db_set is called directly.  We enqueue
+        the send so it runs after the transaction commits (P2-8, P2-9).
+        """
+        try:
+            # P2-1: only web form paths carry visitor_invitation
+            if not self.visitor_invitation:
+                return
+
+            # P2-8: notification fixture might be missing or disabled
+            if not frappe.db.exists("Notification", "VMS PRR Submitted"):
+                frappe.log_error(
+                    f"Visitor Pass {self.name}: Notification 'VMS PRR Submitted' not found — skipping.",
+                    "PRR Notification Skipped",
+                )
+                return
+
+            frappe.enqueue(
+                "visitormanagement.visitor_management.doctype.visitor_pass.visitor_pass._send_prr_submitted_notification",
+                visitor_pass_name=self.name,
+                queue="short",
+                now=frappe.flags.in_test,
+            )
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "PRR Notification Enqueue Failed")
+
+    def _notify_invitation_creator_of_submission(self):
+        """Email the invitation creator to confirm the visitor has submitted.
+
+        Guards (P2-6, P2-7, P2-9):
+        - Skip if visitor_invitation is not set (P2-1).
+        - Skip if creator is blank, Administrator, or Guest (P2-7 defensive guard).
+        - Wrapped in try/except (P2-9).
+        """
+        try:
+            if not self.visitor_invitation:
+                return
+
+            inv = frappe.get_doc("Visitor Invitation", self.visitor_invitation)
+            creator = (inv.created_by_user or "").strip()
+
+            # P2-7: skip non-real users; in web form flow session.user IS Guest
+            # so the == frappe.session.user check is also safe but mainly defensive
+            if not creator or creator in ("Administrator", "Guest"):
+                return
+            if creator == frappe.session.user:
+                return
+
+            visitor_name = (self.visitor_full_name or "unnamed")
+            visitor_type = (self.visitor_type or "-")
+            visit_date = str(self.visit_date) if self.visit_date else "-"
+            checkin = str(self.expected_checkin) if self.expected_checkin else "-"
+            checkout = str(self.expected_checkout) if self.expected_checkout else "-"
+
+            # Map visitor_type → responsible manager role for the body line
+            _ROLE_MAP = {
+                "Contractor": "System Manager",
+                "Supplier":   "System Manager",
+                "Candidate":  "HR Manager",
+                "Customer":   "Sales Manager",
+                "VIP":        "HOD",
+            }
+            manager_role = _ROLE_MAP.get(self.visitor_type, "the relevant approver")
+
+            pass_url = f"{get_url()}/app/visitor-pass/{self.name}"
+
+            subject = f"Visitor has submitted pre-registration — {visitor_name}"
+
+            message_lines = [
+                f"Dear {creator},",
+                "",
+                f"The visitor <b>{visitor_name}</b> has completed their pre-registration via the portal.",
+                "",
+                f"<b>Visitor Type :</b> {visitor_type}",
+                f"<b>Visit Date   :</b> {visit_date}",
+                f"<b>Check-In     :</b> {checkin}",
+                f"<b>Check-Out    :</b> {checkout}",
+                f"<b>Pass ID      :</b> <a href=\"{pass_url}\">{self.name}</a>",
+                "",
+                f"The pass is now pending review by <b>{manager_role}</b>.",
+                "",
+                "This is an automated notification — no action is required from you.",
+            ]
+
+            frappe.sendmail(
+                recipients=[creator],
+                subject=subject,
+                message="<br>".join(message_lines),
+                now=True,
+            )
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Creator-Submission Notify Failed — {self.name}",
+            )
 
     def _align_workflow_lane_with_visitor_type(self):
         if not self.visitor_type or not self.workflow_state:
@@ -350,6 +547,121 @@ class VisitorPass(Document):
         # Notify Food Dept if a meal was requested
         if getattr(self, "meal_required", 0):
             self._notify_food_dept()
+
+        # Phase 3 — Tweak 2: heads-up to Hospitality Manager when this pass
+        # needs any hospitality service.  Differentiated from the later
+        # "arrangements confirmed" mail by subject prefix "NEW … needs review".
+        self._notify_hospitality_manager_heads_up()
+
+    # ─────────────────────────────────────────────────────────
+    # PHASE 3 — TWEAK 2: HOSPITALITY MANAGER HEADS-UP
+    # ─────────────────────────────────────────────────────────
+    def _notify_hospitality_manager_heads_up(self):
+        """Send a heads-up email to Hospitality Managers when a Visitor Pass that
+        needs hospitality services is approved.
+
+        Guards:
+        - Pass must be in workflow_state "Approved" (set by on_submit above via db_set).
+        - At least one hospitality service must be required (hospitality_request link
+          OR any of the individual service flags).
+        - Wrapped in try/except — never raises; logs on failure.
+
+        Idempotency note (Phase 3 known limitation): there is no database flag
+        guarding against re-fire if a pass is re-submitted.  A dedicated Check
+        field will be added in a follow-up phase to make this fully idempotent.
+        Re-submitting an already-approved pass will send a duplicate heads-up.
+
+        B13 guard: subject uses "NEW … needs review" prefix — clearly distinct
+        from the later Hospitality Request approval mail subject
+        "Hospitality Approved (Summary): …".
+        """
+        try:
+            # Guard 1: workflow state must be Approved (set by on_submit)
+            if (self.workflow_state or "").strip() != "Approved":
+                return
+
+            # Guard 2: must need at least one hospitality service
+            hospitality_flags = (
+                "cab_required", "hotel_required", "factory_tour_required",
+                "buggy_required", "greeting_required", "meal_required",
+            )
+            needs_hospitality = bool(self.hospitality_request) or any(
+                cint(getattr(self, flag, 0)) for flag in hospitality_flags
+            )
+            if not needs_hospitality:
+                return
+
+            manager_emails = _get_hospitality_manager_emails()
+            if not manager_emails:
+                return
+
+            visitor_name = self.visitor_full_name or "Unknown Visitor"
+            visitor_type = self.visitor_type or "-"
+            visit_date = str(self.visit_date) if self.visit_date else "Not specified"
+            host = self.person_to_visit or "-"
+
+            hosp_req = self.hospitality_request or None
+            hosp_link = ""
+            if hosp_req:
+                hosp_link = (
+                    f'<br><b>Hospitality Request:</b> '
+                    f'<a href="{get_url()}/app/hospitality-request/{hosp_req}">'
+                    f'{hosp_req}</a>'
+                )
+            else:
+                hosp_link = (
+                    "<br><i>The Hospitality Request record will be created automatically "
+                    "once the pass is saved — please check the Hospitality Request list.</i>"
+                )
+
+            # List which services are needed
+            service_labels = {
+                "cab_required": "Cab / Transport",
+                "hotel_required": "Hotel Booking",
+                "factory_tour_required": "Factory Tour",
+                "buggy_required": "Buggy Vehicle",
+                "greeting_required": "Greeting Arrangement",
+                "meal_required": "Meal",
+            }
+            services_needed = [
+                label for flag, label in service_labels.items()
+                if cint(getattr(self, flag, 0))
+            ]
+            services_str = ", ".join(services_needed) if services_needed else "See hospitality request"
+
+            subject = f"NEW hospitality request needs review — {visitor_name} ({visitor_type})"
+
+            message_lines = [
+                f"A Visitor Pass has been approved that requires hospitality arrangements.",
+                "",
+                f"<b>Visitor:</b> {visitor_name}",
+                f"<b>Visitor Type:</b> {visitor_type}",
+                f"<b>Visit Date:</b> {visit_date}",
+                f"<b>Host:</b> {host}",
+                f"<b>Services Required:</b> {services_str}",
+                f"<b>Pass ID:</b> "
+                f'<a href="{get_url()}/app/visitor-pass/{self.name}">{self.name}</a>',
+                hosp_link,
+                "",
+                "Please review and fill in the hospitality arrangements at your earliest convenience.",
+                "",
+                "<i>This is an automated heads-up — no action is required from the visitor.</i>",
+            ]
+
+            frappe.sendmail(
+                recipients=manager_emails,
+                subject=subject,
+                message="<br>".join(message_lines),
+                reference_doctype="Visitor Pass",
+                reference_name=self.name,
+                now=True,
+            )
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hospitality Heads-Up Failed — {self.name}",
+            )
 
     # ─────────────────────────────────────────────────────────
     # GENERATE BADGE NUMBER (Called by Security Log)
@@ -504,6 +816,24 @@ class VisitorPass(Document):
                 subject=f"Meal Required: {self.visitor_full_name}",
                 message=f"Meal Type: {self.meal_type}<br>Visitor Pass: {self.name}",
             )
+
+def _send_prr_submitted_notification(visitor_pass_name):
+    """Background worker: load the fresh Visitor Pass and send the VMS PRR Submitted notification.
+
+    Called via frappe.enqueue from _fire_prr_submitted_notification so the
+    transaction has committed before we read the workflow_state.
+    """
+    try:
+        if not frappe.db.exists("Notification", "VMS PRR Submitted"):
+            return
+        notif = frappe.get_doc("Notification", "VMS PRR Submitted")
+        if not notif.enabled:
+            return
+        doc = frappe.get_doc("Visitor Pass", visitor_pass_name)
+        notif.send(doc)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"PRR Notification Send Failed — {visitor_pass_name}")
+
 
 @frappe.whitelist()
 def search_existing_by_phone(phone):
