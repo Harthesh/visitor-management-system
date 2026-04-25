@@ -110,11 +110,60 @@ def _kv_table(rows):
 	return f'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">{trs}</table>'
 
 
-def _send_service_email(recipient_email, subject, visitor_bar, title, kv_rows, doc_name):
-	"""Send an individual service assignment email."""
+def _visit_window_rows(doc):
+	"""Return (label, value) rows for the Visit Window section.
+
+	B14 guard: if visit_start_time is None, renders 'Not specified'.
+	If duration cannot be computed (either datetime is None), the duration
+	row is omitted entirely rather than crashing.
+	"""
+	start = getattr(doc, "visit_start_time", None)
+	end = getattr(doc, "visit_end_time", None)
+
+	start_str = str(start) if start else "Not specified"
+	end_str = str(end) if end else "Not specified"
+
+	rows = [
+		("Visit Start", start_str),
+		("Visit End", end_str),
+	]
+
+	# Duration: compute only when both datetimes are available
+	try:
+		if start and end:
+			from frappe.utils import get_datetime as _gdt
+			days = (_gdt(end).date() - _gdt(start).date()).days + 1
+			days = max(days, 1)
+			rows.append(("Duration", f"{days} day{'s' if days != 1 else ''}"))
+	except Exception:
+		pass  # B14: omit duration line on any computation failure
+
+	return rows
+
+
+def _visit_window_html(doc):
+	"""Build a compact HTML block for the Visit Window section."""
+	rows = _visit_window_rows(doc)
+	return (
+		'<div style="margin:14px 0 4px;padding:8px 12px;background:#ebf8ff;'
+		'border-left:3px solid #3182ce;border-radius:4px;">'
+		'<b style="font-size:12px;color:#2b6cb0;">Visit Window</b>'
+		f'{_kv_table(rows)}'
+		'</div>'
+	)
+
+
+def _send_service_email(recipient_email, subject, visitor_bar, title, kv_rows, doc_name,
+                        extra_html=""):
+	"""Send an individual service assignment email.
+
+	extra_html is appended after the main kv_table — used to inject the
+	Visit Window block (Tweak 1, Phase 3).
+	"""
 	if not recipient_email:
 		return
-	body = _wrap_email_body(visitor_bar, title, _kv_table(kv_rows), doc_name)
+	content = _kv_table(kv_rows) + extra_html
+	body = _wrap_email_body(visitor_bar, title, content, doc_name)
 	frappe.sendmail(
 		recipients=[recipient_email],
 		subject=subject,
@@ -147,6 +196,9 @@ def _send_approval_emails(doc):
 	visitor_bar = _visitor_info_bar_html(vp)
 	sent_emails = set()
 
+	# Build the Visit Window HTML block once; reused for all service emails (Tweak 1, Phase 3).
+	visit_window = _visit_window_html(doc)
+
 	# --- Cab / Transport ---
 	if cint(doc.cab_required) and doc.cab_vendor:
 		emp_name, email = _get_employee_name_and_email(doc.cab_vendor)
@@ -164,6 +216,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Cab Assignment Approved: {visitor_name}",
 				visitor_bar, "Cab / Transport Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 
@@ -184,6 +237,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Hotel Booking Approved: {visitor_name}",
 				visitor_bar, "Hotel Booking Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 
@@ -205,6 +259,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Factory Tour Assignment Approved: {visitor_name}",
 				visitor_bar, "Factory Tour Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 
@@ -222,6 +277,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Buggy Assignment Approved: {visitor_name}",
 				visitor_bar, "Buggy Vehicle Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 
@@ -238,6 +294,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Greeting Assignment Approved: {visitor_name}",
 				visitor_bar, "Greeting Arrangement Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 
@@ -258,6 +315,7 @@ def _send_approval_emails(doc):
 			_send_service_email(
 				email, f"Meal/Conference Assignment Approved: {visitor_name}",
 				visitor_bar, "Meal / Conference Assignment", rows, doc.name,
+				extra_html=visit_window,
 			)
 			sent_emails.add(email)
 

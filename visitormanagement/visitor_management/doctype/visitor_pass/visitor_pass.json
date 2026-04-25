@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "VP-.YYYY.-.#####",
- "creation": "2026-02-28 17:44:43.087151",
+ "creation": "2026-04-21 16:30:45.545007",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -43,9 +43,6 @@
   "visit_category",
   "sales_executive",
   "column_break_customer",
-  "products_discussed",
-  "meeting_outcome",
-  "followup_date",
   "meeting_minutes",
   "section_break_contractor",
   "contractor_link",
@@ -61,15 +58,10 @@
   "job_applicant_link",
   "position_applied",
   "candidate_interview_type",
-  "column_break_candidate",
-  "interview_panel",
   "section_break_supplier_details",
   "supplier_link",
   "supplier_visit_mode",
   "meeting_subject",
-  "column_break_supplier",
-  "nda_required",
-  "documents_shared",
   "section_break_vip_details",
   "vip_category",
   "priority_lane",
@@ -369,25 +361,6 @@
   },
   {
    "depends_on": "eval:doc.visitor_type == 'Customer'",
-   "fieldname": "products_discussed",
-   "fieldtype": "Small Text",
-   "label": "Products Discussed"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Customer'",
-   "fieldname": "meeting_outcome",
-   "fieldtype": "Select",
-   "label": "Meeting Outcome",
-   "options": "Pending\nDeal Closed\nFollow-Up Needed\nNo Interest"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Customer'",
-   "fieldname": "followup_date",
-   "fieldtype": "Date",
-   "label": "Follow-Up Date"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Customer'",
    "fieldname": "meeting_minutes",
    "fieldtype": "Text Editor",
    "label": "Meeting Minutes"
@@ -484,17 +457,6 @@
    "options": "Walk-In\nScheduled\nGroup Discussion\nTechnical Round"
   },
   {
-   "depends_on": "eval:doc.visitor_type == 'Candidate'",
-   "fieldname": "column_break_candidate",
-   "fieldtype": "Column Break"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Candidate'",
-   "fieldname": "interview_panel",
-   "fieldtype": "Small Text",
-   "label": "Interview Panel"
-  },
-  {
    "collapsible": 1,
    "depends_on": "eval:doc.visitor_type == 'Supplier'",
    "fieldname": "section_break_supplier_details",
@@ -513,31 +475,13 @@
    "fieldname": "supplier_visit_mode",
    "fieldtype": "Select",
    "label": "Supplier Visit Mode",
-   "options": "\nDelivery\nMeeting\nAudit\nService"
+   "options": "\nMeeting\nAudit\nService"
   },
   {
    "depends_on": "eval:doc.visitor_type == 'Supplier' && doc.supplier_visit_mode != 'Delivery'",
    "fieldname": "meeting_subject",
    "fieldtype": "Data",
    "label": "Meeting Subject"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Supplier'",
-   "fieldname": "column_break_supplier",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.visitor_type == 'Supplier' && doc.supplier_visit_mode != 'Delivery'",
-   "fieldname": "nda_required",
-   "fieldtype": "Check",
-   "label": "NDA Required"
-  },
-  {
-   "depends_on": "eval:doc.visitor_type == 'Supplier' && doc.supplier_visit_mode != 'Delivery'",
-   "fieldname": "documents_shared",
-   "fieldtype": "Small Text",
-   "label": "Documents Shared"
   },
   {
    "collapsible": 1,
@@ -970,7 +914,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-21 10:47:39.730898",
+ "modified": "2026-04-22 11:17:22.119722",
  "modified_by": "Administrator",
  "module": "Visitor Management",
  "name": "Visitor Pass",
@@ -1055,6 +999,11 @@
    "role": "Gate Security",
    "share": 1,
    "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Security Head"
   }
  ],
  "row_format": "Dynamic",

@@ -25,16 +25,14 @@ frappe.ui.form.on("Visitor Invitation", {
 		}
 
 		// --- Send Invitation button ---
-		if (frm.doc.visitor_email && !["Submitted", "Expired"].includes(frm.doc.invitation_status)) {
-			const btnLabel = frm.doc.invitation_status === "Draft"
-				? __("Send Invitation")
-				: __("Resend Invitation");
+		// Only shown for Draft status. Once auto-send fires on creation (or the button is
+		// used manually), status moves to Sent/Opened/Saved/Submitted — hide the button to
+		// prevent accidental double-send (guards B1).
+		if (frm.doc.visitor_email && frm.doc.invitation_status === "Draft") {
+			const btnLabel = __("Send Invitation");
 
 			frm.add_custom_button(btnLabel, () => {
-				const action = frm.doc.invitation_status === "Draft" ? "send" : "resend";
-				const confirmMsg = action === "resend"
-					? __("Invitation was already sent on {0}. Send again?", [frm.doc.invitation_sent_on])
-					: __("Send invitation email to {0}?", [frm.doc.visitor_email]);
+				const confirmMsg = __("Send invitation email to {0}?", [frm.doc.visitor_email]);
 
 				frappe.confirm(confirmMsg, () => {
 					frappe.call({

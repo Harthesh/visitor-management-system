@@ -195,6 +195,11 @@ def get_context(context):
 			label for label in TYPE_SECTION_LABELS.values() if label != active_section
 		}
 
+		# Hide Visit Details section entirely when the host already filled purpose_of_visit
+		# (all other Visit Details fields are in ALWAYS_LOCKED_FIELDS, so the whole section is empty).
+		if "purpose_of_visit" in locked_host_fields:
+			hide_sections.add("Visit Details")
+
 		hiding_section = False
 		for field in context.web_form_doc.web_form_fields:
 			if field.fieldname in INTERNAL_HIDE_FIELDS | locked_host_fields:

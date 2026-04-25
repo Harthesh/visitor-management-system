@@ -160,16 +160,23 @@ def _normalize_time(value):
 
 
 def _get_portal_submission_state(visitor_type, submission_action):
-	if submission_action == "save":
-		return "Draft"
-
-	return PENDING_APPROVAL_BY_TYPE.get(visitor_type, "Pending System Manager")
+	# When the visitor submits (not just saves), auto-advance to the correct
+	# Pending lane so approval-role users see the notification immediately.
+	# Save-actions keep Draft so the visitor can return and complete later.
+	if submission_action == "submit" and visitor_type:
+		pending_state = PENDING_APPROVAL_BY_TYPE.get(visitor_type)
+		if pending_state:
+			return pending_state
+	return "Draft"
 
 
 def _build_visitor_pass_values(data, person_to_visit, id_proof_url, visitor_photo_url, invitation=None):
 	visitor_type = invitation.visitor_type if invitation else data.get("visitor_type")
 	submission_action = (data.get("submission_action") or "submit").strip().lower()
 	target_state = _get_portal_submission_state(visitor_type, submission_action)
+	# status field only accepts "Draft" / "Pending Approval" / "Approved" etc.
+	# Map any Pending lane to "Pending Approval" for the initial insert.
+	status_value = "Pending Approval" if (target_state and target_state.startswith("Pending")) else target_state
 
 	return {
 		"entry_type": "New",
@@ -209,8 +216,14 @@ def _build_visitor_pass_values(data, person_to_visit, id_proof_url, visitor_phot
 		"multi_day_pass": data.get("multi_day_pass"),
 		"pass_valid_until": data.get("pass_valid_until"),
 		"job_applicant_link": data.get("job_applicant_link"),
-		"position_applied": data.get("position_applied"),
-		"candidate_interview_type": data.get("candidate_interview_type"),
+		"position_applied": (
+			data.get("position_applied")
+			or (invitation.get("position_applied") if invitation else None)
+		),
+		"candidate_interview_type": (
+			data.get("candidate_interview_type")
+			or (invitation.get("candidate_interview_type") if invitation else None)
+		),
 		"interview_panel": data.get("interview_panel"),
 		"vip_category": data.get("vip_category"),
 		"priority_lane": data.get("priority_lane"),
@@ -230,7 +243,7 @@ def _build_visitor_pass_values(data, person_to_visit, id_proof_url, visitor_phot
 		"id_proof_number": data.get("id_proof_number"),
 		"id_proof_scan": id_proof_url,
 		"visitor_photo": visitor_photo_url,
-		"status": target_state,
+		"status": status_value,
 		"workflow_state": target_state,
 		"visitor_invitation": invitation.name if invitation else None,
 	}
@@ -339,10 +352,14 @@ def submit_pre_registration(payload=None):
 		visitor_pass.flags.ignore_mandatory = not require_full_submission
 		visitor_pass.save(ignore_permissions=True)
 
-	if visitor_pass.status != target_state or visitor_pass.workflow_state != target_state:
+	# workflow_state uses the full lane name (e.g. "Pending System Manager").
+	# status is a Select field whose options do not include the lane names —
+	# map any Pending lane to "Pending Approval" for the status column.
+	status_value = "Pending Approval" if (target_state and target_state.startswith("Pending")) else target_state
+	if visitor_pass.workflow_state != target_state or visitor_pass.status != status_value:
 		visitor_pass.db_set(
 			{
-				"status": target_state,
+				"status": status_value,
 				"workflow_state": target_state,
 			},
 			update_modified=False,

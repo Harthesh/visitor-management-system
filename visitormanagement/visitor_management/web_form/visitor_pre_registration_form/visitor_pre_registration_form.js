@@ -192,6 +192,63 @@ function validateIdProofField(showMessage = false) {
 	return state;
 }
 
+function getMobileValidationState(raw) {
+	if (!raw) {
+		return { status: "neutral", isValid: true, message: "" };
+	}
+	const digits = String(raw).replace(/\D/g, "");
+	const isIndia = String(raw).trim().startsWith("+91") || (digits.startsWith("91") && digits.length > 10);
+	if (isIndia) {
+		const national = digits.startsWith("91") ? digits.slice(2) : digits;
+		if (national.length !== 10) {
+			return { status: "invalid", isValid: false, message: `India: need exactly 10 digits after +91. Got ${national.length}.` };
+		}
+		if (!"6789".includes(national[0])) {
+			return { status: "invalid", isValid: false, message: "India: mobile must start with 6, 7, 8, or 9." };
+		}
+		return { status: "valid", isValid: true, message: "India: format looks valid." };
+	}
+	if (digits.length < 8) {
+		return { status: "pending", isValid: true, message: `Enter 8-15 digits. Got ${digits.length}.` };
+	}
+	if (digits.length > 15) {
+		return { status: "invalid", isValid: false, message: "Number too long (max 15 digits)." };
+	}
+	return { status: "valid", isValid: true, message: "Format looks valid." };
+}
+
+function renderMobileFeedback(state) {
+	const $control = $('.frappe-control[data-fieldname="mobile_number"]');
+	if (!$control.length) return state;
+	let $help = $control.find(".vm-mobile-help");
+	if (!$help.length) {
+		$help = $('<div class="vm-mobile-help help-box small text-muted"></div>');
+		$control.find(".control-input-wrapper").append($help);
+	}
+	const colorByStatus = {
+		valid: "#15803d", invalid: "#b91c1c", pending: "#92400e", neutral: "#64748b",
+	};
+	$help.text(state.message || "").css("color", colorByStatus[state.status] || colorByStatus.neutral);
+	const $input = frappe.web_form?.get_input?.("mobile_number");
+	if ($input?.length) {
+		$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+	return state;
+}
+
+function validateMobileField(showMessage = false) {
+	const state = getMobileValidationState(getFieldValue("mobile_number"));
+	renderMobileFeedback(state);
+	if (showMessage && state.status === "invalid") {
+		frappe.msgprint({
+			title: __("Invalid Mobile Number"),
+			message: __(state.message),
+			indicator: "red",
+		});
+	}
+	return state;
+}
+
 function setFormVisibility(visible) {
 	$(".web-form .form-column, .web-form .section-body, .web-form .web-form-footer, .vm-custom-block").toggleClass(
 		"vm-form-hidden",
@@ -499,11 +556,8 @@ function getInvitationToken() {
 }
 
 function getPortalSubmissionState(visitorType, submissionAction = "submit") {
-	if (submissionAction === "save") {
-		return "Draft";
-	}
-
-	return PENDING_APPROVAL_BY_TYPE[visitorType] || "Pending System Manager";
+	// Portal submissions always land as Draft. Host reviews and pushes through workflow manually.
+	return "Draft";
 }
 
 function getBootInvitationContext() {
@@ -548,6 +602,13 @@ function bindGenericFormHandlers() {
 	$idProofNumberInput.on("input change", () => {
 		validateIdProofField(false);
 	});
+
+	const $mobileInput = frappe.web_form.get_input("mobile_number");
+	if ($mobileInput?.length) {
+		$mobileInput.on("input change", () => {
+			validateMobileField(false);
+		});
+	}
 }
 
 function unlockDirectAccessFields() {
@@ -841,6 +902,11 @@ function setupInvitationHooks() {
 
 		const idProofState = validateIdProofField(true);
 		if (!idProofState.isValid) {
+			return false;
+		}
+
+		const mobileState = validateMobileField(true);
+		if (!mobileState.isValid) {
 			return false;
 		}
 

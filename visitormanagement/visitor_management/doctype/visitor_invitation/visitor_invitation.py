@@ -102,6 +102,8 @@ def get_web_form_context(token):
 		"hospitality_type": meal_plan["hospitality_type"] if invitation.meal_required else "",
 		"service_time": _format_datetime_for_web_form(meal_plan["service_time"]) if invitation.meal_required else "",
 		"refreshments_required": invitation.refreshments_required,
+		"position_applied": invitation.get("position_applied") or "",
+		"candidate_interview_type": invitation.get("candidate_interview_type") or "",
 	}
 
 	if existing_pass:
@@ -194,6 +196,116 @@ class VisitorInvitation(Document):
 
 		self._apply_hospitality_defaults()
 
+		# Generate token and portal URL eagerly so they are available in after_insert
+		# and in any downstream code that reads these fields before send_invitation() runs.
+		self._ensure_token()
+
+	def _ensure_token(self):
+		"""Generate invitation_token and portal_submission_url if they are not yet set.
+
+		Called from validate() so the values are persisted on first save.
+		send_invitation() will reuse an existing token (idempotent resend creates a new token
+		intentionally, as a fresh link).
+		"""
+		if not self.invitation_token:
+			self.invitation_token = secrets.token_urlsafe(24)
+		if not self.portal_submission_url:
+			self.portal_submission_url = build_invitation_link(self.invitation_token)
+
+	def after_insert(self):
+		self._auto_send_on_create()
+		self._notify_creator_of_invitation()
+
+	def _auto_send_on_create(self):
+		"""Send the visitor invitation email automatically when a new record is created.
+
+		Guards (all wrapped in try/except so a mail failure never aborts the save):
+		- Skip if already Sent (idempotency — B1).
+		- Skip if visitor_email is blank (B2).
+		- Skip if no outgoing email account is configured (B4).
+		"""
+		try:
+			if self.invitation_status == "Sent":
+				return
+
+			if not self.visitor_email:
+				frappe.log_error(
+					f"Visitor Invitation {self.name}: visitor_email is blank — skipping auto-send.",
+					"Auto-Send Skipped",
+				)
+				return
+
+			if not frappe.db.exists(
+				"Email Account", {"default_outgoing": 1, "enable_outgoing": 1}
+			):
+				frappe.log_error(
+					f"Visitor Invitation {self.name}: no default outgoing email account configured — skipping auto-send.",
+					"Auto-Send Skipped",
+				)
+				return
+
+			self.send_invitation()
+
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"Visitor Invitation {self.name}: auto-send failed")
+
+	def _notify_creator_of_invitation(self):
+		"""Send a confirmation email to the person who created the invitation (created_by_user).
+
+		Guards:
+		- Skip if created_by_user is blank, Administrator, or Guest (B3).
+		- Wrapped in try/except so failure never aborts the save (B6).
+		"""
+		try:
+			creator = (self.created_by_user or "").strip()
+			if not creator or creator in ("Administrator", "Guest"):
+				return
+
+			visitor_name = (
+				self.get("visitor_full_name") or self.visitor_email or "-"
+			)
+			visit_date = str(self.visit_date) if self.visit_date else "-"
+			checkin = str(self.expected_checkin) if self.expected_checkin else "-"
+			checkout = str(self.expected_checkout) if self.expected_checkout else "-"
+			visitor_type = self.visitor_type or "-"
+			host = self.host_employee or "-"
+			purpose = self.purpose_of_visit or "-"
+			portal_url = self.portal_submission_url or build_invitation_link(self.invitation_token) if self.invitation_token else "-"
+
+			subject = f"Visitor invitation sent to {visitor_name}"
+
+			message_lines = [
+				f"Dear {creator},",
+				"",
+				"A visitor pre-registration invitation has been sent automatically.",
+				"",
+				f"Visitor Name/Email : {visitor_name}",
+				f"Visitor Type       : {visitor_type}",
+				f"Visit Date         : {visit_date}",
+				f"Expected Check-In  : {checkin}",
+				f"Expected Check-Out : {checkout}",
+				f"Host               : {host}",
+				f"Purpose            : {purpose}",
+				"",
+				"Portal Link (share manually if needed):",
+				f'<a href="{portal_url}">{portal_url}</a>',
+				"",
+				"This is an automated confirmation — no action is required from you.",
+			]
+
+			frappe.sendmail(
+				recipients=[creator],
+				subject=subject,
+				message="<br>".join(message_lines),
+				now=True,
+			)
+
+		except Exception:
+			frappe.log_error(
+				frappe.get_traceback(),
+				f"Visitor Invitation {self.name}: creator notification failed",
+			)
+
 	def _validate_visit_date(self):
 		if not self.visit_date:
 			return
@@ -252,7 +364,15 @@ class VisitorInvitation(Document):
 		if not self.visitor_email:
 			frappe.throw("Visitor Email is required before sending invitation.")
 
-		token = secrets.token_urlsafe(24)
+		# Reuse the existing token if one was already generated in validate() / _ensure_token().
+		# On a manual "Resend" the caller intentionally wants a fresh link — generate a new token
+		# only when the status is already "Sent" or beyond (resend scenario).
+		already_sent = self.invitation_status in ("Sent", "Opened", "Saved", "Submitted")
+		if already_sent or not self.invitation_token:
+			token = secrets.token_urlsafe(24)
+		else:
+			token = self.invitation_token
+
 		sent_on = now_datetime()
 		expires_on = _coerce_datetime(self.invitation_expires_on) or add_days(
 			sent_on, INVITATION_EXPIRY_DAYS

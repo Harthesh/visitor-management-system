@@ -3,6 +3,33 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
+  "modified": "2026-04-13 10:39:52.041975",
+  "name": "Pending Manager Approval",
+  "style": "Warning",
+  "workflow_state_name": "Pending Manager Approval"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-04-13 10:39:52.046499",
+  "name": "In Progress",
+  "style": "Inverse",
+  "workflow_state_name": "In Progress"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-04-13 10:39:52.050489",
+  "name": "Completed",
+  "style": "Success",
+  "workflow_state_name": "Completed"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
   "modified": "2026-03-01 20:16:51.270540",
   "name": "Pending Visitor Manager",
   "style": "",

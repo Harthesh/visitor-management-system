@@ -1,3 +1,28 @@
+"""
+sync_hospitality_request_workflow — patch to bootstrap the Hospitality Request Approval workflow.
+
+Fixture decision (Phase 3, 2026-04-22):
+  The Hospitality Request Approval workflow is ALSO shipped as a fixture in
+  visitormanagement/fixtures/workflow.json.  The fixture is the canonical
+  source of truth for fresh installs (bench migrate syncs it automatically).
+
+  This patch is kept active for two reasons:
+    1. It ensures the Workflow State and Workflow Action Master records that
+       the workflow references are present before the workflow row is created.
+       Frappe's fixture loader does not auto-create those child records.
+    2. It provides a safety net on benches where the fixtures key was not
+       active at the time of first install.
+
+  Idempotency: the patch now SKIPS creating/updating the Workflow record if
+  it already exists (existence check on line `if frappe.db.exists(...)`).
+  This prevents the patch from overwriting any admin customisations made
+  through the UI after the initial install — those customisations are preserved
+  on every subsequent `bench migrate`.
+
+  If you need to RESET the workflow to the default definition, delete the
+  Workflow record via the UI ("Hospitality Request Approval") and then run
+  `bench --site <site> migrate` — the fixture will recreate it cleanly.
+"""
 import frappe
 
 
@@ -77,6 +102,8 @@ def _ensure_workflow_state_field():
 
 
 def execute():
+	# Always ensure the dependent Workflow State and Workflow Action Master
+	# records exist — these are lightweight and safe to create idempotently.
 	for state in STATES:
 		_ensure_workflow_state(state["state"])
 	for t in TRANSITIONS:
@@ -84,11 +111,13 @@ def execute():
 
 	_ensure_workflow_state_field()
 
-	workflow = (
-		frappe.get_doc("Workflow", WORKFLOW_NAME)
-		if frappe.db.exists("Workflow", WORKFLOW_NAME)
-		else frappe.new_doc("Workflow")
-	)
+	# Skip creating/updating the Workflow record if it already exists.
+	# The fixture (workflow.json) is the canonical source for fresh installs.
+	# Preserving an existing record avoids overwriting admin customisations.
+	if frappe.db.exists("Workflow", WORKFLOW_NAME):
+		return
+
+	workflow = frappe.new_doc("Workflow")
 	workflow.workflow_name = WORKFLOW_NAME
 	workflow.document_type = DOCTYPE
 	workflow.is_active = 1
@@ -115,7 +144,4 @@ def execute():
 			"allowed": tr["allowed"],
 		})
 
-	if workflow.is_new():
-		workflow.insert(ignore_permissions=True)
-	else:
-		workflow.save(ignore_permissions=True)
+	workflow.insert(ignore_permissions=True)

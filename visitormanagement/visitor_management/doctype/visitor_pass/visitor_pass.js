@@ -145,6 +145,41 @@ function apply_id_proof_validation_to_desk_form(frm) {
 	return state;
 }
 
+function get_mobile_validation_state(raw) {
+	if (!raw) {
+		return { status: "neutral", isValid: true, message: "Enter a mobile number." };
+	}
+	const digits = String(raw).replace(/\D/g, "");
+	const isIndia = String(raw).trim().startsWith("+91") || (digits.startsWith("91") && digits.length > 10);
+	if (isIndia) {
+		const national = digits.startsWith("91") ? digits.slice(2) : digits;
+		if (national.length !== 10) {
+			return { status: "invalid", isValid: false, message: `India: need exactly 10 digits after +91. Got ${national.length}.` };
+		}
+		if (!"6789".includes(national[0])) {
+			return { status: "invalid", isValid: false, message: "India: mobile must start with 6, 7, 8, or 9." };
+		}
+		return { status: "valid", isValid: true, message: "India: format looks valid." };
+	}
+	if (digits.length < 8) {
+		return { status: "pending", isValid: true, message: `Enter 8-15 digits. Got ${digits.length}.` };
+	}
+	if (digits.length > 15) {
+		return { status: "invalid", isValid: false, message: "Number too long (max 15 digits)." };
+	}
+	return { status: "valid", isValid: true, message: "Format looks valid." };
+}
+
+function apply_mobile_validation_to_desk_form(frm) {
+	const field = frm.get_field("mobile_number");
+	if (!field) return;
+	const state = get_mobile_validation_state(frm.doc.mobile_number);
+	frm.set_df_property("mobile_number", "description", get_id_proof_feedback_html(state));
+	if (field.$input) {
+		field.$input.css("border-color", state.status === "invalid" ? "#dc2626" : "");
+	}
+}
+
 function prefill_default_declared_items(frm) {
 	if (!frm.is_new() || frm.doc.amended_from) return;
 	if ((frm.doc.visitor_items || []).length) return;
@@ -157,6 +192,7 @@ function prefill_default_declared_items(frm) {
 
 frappe.ui.form.on("Visitor Pass", {
 	refresh(frm) {
+		frm.dashboard?.clear_headline();
 		ensure_customer_crm_defaults(frm);
 		setup_supplier_pass_query(frm);
 		apply_visitor_pass_ui(frm);
@@ -164,6 +200,7 @@ frappe.ui.form.on("Visitor Pass", {
 		add_hospitality_buttons(frm);
 		prefill_default_declared_items(frm);
 		apply_id_proof_validation_to_desk_form(frm);
+		apply_mobile_validation_to_desk_form(frm);
 	},
 
 	visitor_type(frm) {
@@ -245,6 +282,7 @@ frappe.ui.form.on("Visitor Pass", {
 	},
 
 	mobile_number(frm) {
+		apply_mobile_validation_to_desk_form(frm);
 		lookup_existing_visitor_match(frm, "mobile_number");
 	},
 
@@ -356,8 +394,6 @@ frappe.ui.form.on("Visitor Pass", {
 
 function apply_visitor_pass_ui(frm) {
 	apply_visitor_pass_field_rules(frm);
-	set_visitor_pass_intro(frm);
-	set_visitor_pass_headline(frm);
 }
 
 function ensure_customer_crm_defaults(frm) {
@@ -605,90 +641,6 @@ function refresh_hospitality_plan(frm) {
 	});
 }
 
-function set_visitor_pass_intro(frm) {
-	const stage = get_pass_stage(frm);
-	const approval_lane = get_approval_lane(frm.doc.visitor_type);
-
-	if (frm.is_new()) {
-		frm.set_intro(
-			__(
-				"Complete the Visitor Profile and Visit Plan first, then fill the section that matches the selected visitor type before submitting."
-			),
-			"blue"
-		);
-		return;
-	}
-
-	if (stage.startsWith("Pending")) {
-		frm.set_intro(
-			approval_lane
-				? __("Awaiting approval from {0}. Review the request snapshot and visit-specific details carefully.", [
-						approval_lane,
-				  ])
-				: __("Awaiting approval. Review the visitor details before taking action."),
-			"orange"
-		);
-		return;
-	}
-
-	if (stage === "Approved") {
-		frm.set_intro(
-			__(
-				frm.doc.visitor_type === "VIP"
-					? "Approved. Security should use the VIP priority lane and issue the badge during gate check-in."
-					: "Approved. Security can now verify declared items, issue the badge, and record the visitor check-in."
-			),
-			"green"
-		);
-		return;
-	}
-
-	if (stage === "Items Verified") {
-		frm.set_intro(
-			__("Items are verified and the pass is gate-ready. Proceed with Security Log check-in."),
-			"blue"
-		);
-		return;
-	}
-
-	if (stage === "Checked-In") {
-		frm.set_intro(
-			__("Visitor is currently inside the premises. Use Security Log to record checkout when they exit."),
-			"green"
-		);
-		return;
-	}
-
-	if (stage === "Checked-Out") {
-		frm.set_intro(__("Visit completed and gate exit recorded."), "blue");
-		return;
-	}
-
-	if (stage === "Rejected") {
-		frm.set_intro(
-			__("Request rejected. Update the details and reapply if the visit still needs to happen."),
-			"red"
-		);
-		return;
-	}
-
-	frm.set_intro(null);
-}
-
-function set_visitor_pass_headline(frm) {
-	if (!frm.dashboard) return;
-
-	const stage = get_pass_stage(frm);
-	const visitor_type = frm.doc.visitor_type || __("Visitor");
-	const visit_date = frm.doc.visit_date ? frappe.datetime.str_to_user(frm.doc.visit_date) : __("Date Pending");
-	const headline = frm.doc.badge_number
-		? __("{0} | {1} | Badge {2}", [visitor_type, stage, frm.doc.badge_number])
-		: __("{0} | {1} | {2}", [visitor_type, stage, visit_date]);
-
-	frm.dashboard.clear_headline();
-	frm.dashboard.set_headline(headline, get_pass_stage_color(stage));
-}
-
 function add_action_buttons(frm) {
 	// "Actions" group removed — "Open Hospitality" is already available
 	// under the "Hospitality" group (see add_hospitality_buttons).
@@ -703,30 +655,6 @@ function setup_supplier_pass_query(frm) {
 			visitor_type: frm.doc.visitor_type,
 		},
 	}));
-}
-
-function get_pass_stage(frm) {
-	return frm.doc.workflow_state || frm.doc.status || __("Draft");
-}
-
-function get_approval_lane(visitor_type) {
-	const lane = {
-		Contractor: __("System Manager"),
-		Supplier: __("System Manager"),
-		Customer: __("Sales Manager"),
-		Candidate: __("HR Manager"),
-		VIP: __("HOD / CEO"),
-	};
-
-	return lane[visitor_type];
-}
-
-function get_pass_stage_color(stage) {
-	if (["Approved", "Checked-In"].includes(stage)) return "green";
-	if (["Pending Approval", "Pending System Manager", "Pending Visitor Manager", "Pending Sales Manager", "Pending HR Manager", "Pending HOD", "Pending CEO"].includes(stage)) return "orange";
-	if (["Rejected", "Cancelled"].includes(stage)) return "red";
-	if (["Items Verified", "Checked-Out"].includes(stage)) return "blue";
-	return "gray";
 }
 
 function show_web_submissions_dialog(frm) {
